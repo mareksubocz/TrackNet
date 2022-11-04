@@ -9,9 +9,11 @@ class TrackNet(nn.Module):
             nn.ReLU(),
             nn.BatchNorm1d(num_features=v)
         ]
+
         return nn.Sequential(
             *(layers*num)
         )
+
 
     def __init__(self):
         super(TrackNet, self).__init__()
@@ -39,6 +41,7 @@ class TrackNet(nn.Module):
 
 
     def forward(self, x):
+        # VGG16
         x1 = self.vgg_conv1(x)
         x = self.vgg_maxpool1(x1)
         x2 = self.vgg_conv2(x)
@@ -49,17 +52,18 @@ class TrackNet(nn.Module):
         x = self.vgg_maxpool4(x)
 
         # Deconv / UNet
-        x = torch.concat(self.unet_upsample1(x), x3)
+        x = torch.concat([self.unet_upsample1(x), x3], dim=1)
         x = self.unet_conv1(x)
-        x = torch.concat(self.unet_upsample2(x), x2)
+        x = torch.concat([self.unet_upsample2(x), x2], dim=1)
         x = self.unet_conv2(x)
-        x = torch.concat(self.unet_upsample3(x), x3)
+        x = torch.concat([self.unet_upsample3(x), x3], dim=1)
         x = self.unet_conv3(x)
 
         x = self.last_conv(x)
         x = self.last_sigmoid(x)
 
         return x
+
 
 if __name__ == '__main__':
     tinymodel = TrackNet()

@@ -64,6 +64,15 @@ class TrackNet(nn.Module):
 
         return x
 
+    def save(self, path, whole_model=False):
+        if whole_model:
+            torch.save(self, path)
+        else:
+            torch.save(self.state_dict(), path)
+
+    def load(self, path, device='cpu'):
+        self.load_state_dict(torch.load(path, map_location=device))
+
 
 if __name__ == '__main__':
-    tinymodel = TrackNet()
+    model = TrackNet()

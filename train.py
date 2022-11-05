@@ -9,7 +9,12 @@ NUM_EPOCHS = 10
 
 
 def wbce_loss(output, target):
-    return -(((1-output)**2) * target * torch.log(output) + output**2 * (1-target) * torch.log(1-output)).sum()
+    return -(
+        ((1-output)**2) * target *
+        torch.log(torch.clamp(output, min=1e-15, max=1)) +
+        output**2 * (1-target) *
+        torch.log(torch.clamp(1-output, min=1e-15, max=1))
+    ).sum()
 
 if __name__ == '__main__':
     # output = torch.tensor([0.01, 0.01, 0.1, 0.4, 0.9, 0.3, 0.2, 0.01])

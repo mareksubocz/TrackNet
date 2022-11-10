@@ -3,38 +3,40 @@ from torch import nn
 
 class TrackNet(nn.Module):
 
-    def _make_convolution_layer(self, v, num):
+    def _make_convolution_layer(self, v, num, dropout_rate = 0.0):
         layers = [
             nn.Conv2d(9, v, kernel_size=(3,3), padding=1),
             nn.ReLU(),
             nn.BatchNorm1d(num_features=v)
         ]
+        if dropout_rate > 1e-15:
+            layers.append(nn.Dropout(dropout_rate))
 
         return nn.Sequential(
             *(layers*num)
         )
 
 
-    def __init__(self):
-        super(TrackNet, self).__init__()
+    def __init__(self, dropout_rate = 0.0):
+        super().__init__()
 
         # VGG16
-        self.vgg_conv1 = self._make_convolution_layer(64, 2)
+        self.vgg_conv1 = self._make_convolution_layer(64, 2, dropout_rate=dropout_rate)
         self.vgg_maxpool1 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv2 = self._make_convolution_layer(128, 2)
+        self.vgg_conv2 = self._make_convolution_layer(128, 2, dropout_rate=dropout_rate)
         self.vgg_maxpool2 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv3 = self._make_convolution_layer(256, 3)
+        self.vgg_conv3 = self._make_convolution_layer(256, 3, dropout_rate=dropout_rate)
         self.vgg_maxpool3 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv4 = self._make_convolution_layer(512, 3)
+        self.vgg_conv4 = self._make_convolution_layer(512, 3, dropout_rate=dropout_rate)
         self.vgg_maxpool4 = nn.MaxPool2d((2,2), stride=(2,2))
 
         # Deconv / UNet
         self.unet_upsample1 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv1 = self._make_convolution_layer(256, 3)
+        self.unet_conv1 = self._make_convolution_layer(256, 3, dropout_rate=dropout_rate)
         self.unet_upsample2 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv2 = self._make_convolution_layer(128, 2)
+        self.unet_conv2 = self._make_convolution_layer(128, 2, dropout_rate=dropout_rate)
         self.unet_upsample3 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv3 = self._make_convolution_layer(64, 2)
+        self.unet_conv3 = self._make_convolution_layer(64, 2, dropout_rate=dropout_rate)
 
         self.last_conv = nn.Conv2d(9, 3, kernel_size=(1,1), padding=1)
         self.last_sigmoid = nn.Sigmoid()

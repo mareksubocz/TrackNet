@@ -3,9 +3,9 @@ from torch import nn
 
 class TrackNet(nn.Module):
 
-    def _make_convolution_layer(self, v, num, dropout_rate = 0.0):
+    def _make_convolution_layer(self, v, num, dropout_rate=0.0):
         layers = [
-            nn.Conv2d(9, v, kernel_size=(3,3), padding=1),
+            nn.Conv2d(9, v, kernel_size=(3, 3), padding=1),
             nn.ReLU(),
             nn.BatchNorm1d(num_features=v)
         ]
@@ -38,17 +38,18 @@ class TrackNet(nn.Module):
         self.unet_upsample3 = nn.UpsamplingNearest2d(scale_factor=2)
         self.unet_conv3 = self._make_convolution_layer(64, 2, dropout_rate=dropout_rate)
 
+        #FIXME: probably should have 3 channels, not 9
         self.last_conv = nn.Conv2d(9, 3, kernel_size=(1,1), padding=1)
         self.last_sigmoid = nn.Sigmoid()
 
 
     def forward(self, x):
         # VGG16
-        x1 = self.vgg_conv1(x)
+        x1 = self.vgg_conv1(x)     
         x = self.vgg_maxpool1(x1)
-        x2 = self.vgg_conv2(x)
+        x2 = self.vgg_conv2(x)     
+
         x = self.vgg_maxpool2(x2)
-        x3 = self.vgg_conv3(x)
         x = self.vgg_maxpool3(x3)
         x = self.vgg_conv4(x)
         x = self.vgg_maxpool4(x)

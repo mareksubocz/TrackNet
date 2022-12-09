@@ -1,8 +1,5 @@
 import torch
-import torchvision
-import torchvision.transforms as transforms
 from TrackNet import TrackNet
-from math import log
 
 BATCH_SIZE = 3
 NUM_EPOCHS = 10
@@ -17,12 +14,11 @@ def wbce_loss(output, target):
     ).sum()
 
 if __name__ == '__main__':
-    # output = torch.tensor([0.01, 0.01, 0.1, 0.4, 0.9, 0.3, 0.2, 0.01])
+    # output = torch.tensor([0., 0., 0.1, 0.4, 0.9, 0.3, 0.2, 0.])
     # target = torch.tensor([0., 0., 0.2, 0.4, 1.0, 0.4, 0.2, 0.])
     # print(output)
     # print(target)
-    # print(loss_fn(output, target))
-    # print(loss_fn_2(output, target))
+    # print(wbce_loss(output, target))
     model = TrackNet()
     optimizer = torch.optim.SGD(
       model.parameters(), lr=0.01, momentum=0.9

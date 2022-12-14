@@ -42,6 +42,7 @@ class TrackNet(nn.Module):
         self.last_conv = nn.Conv2d(9, 3, kernel_size=(1,1), padding=1)
         self.last_sigmoid = nn.Sigmoid()
 
+    
 
     def forward(self, x):
         # VGG16

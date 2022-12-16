@@ -13,12 +13,12 @@ pip install -r requirements.txt
 python train.py
 ```
 
-## Advanced use
+## Dataset Labelling
 ```
-python train.py --help
+python labellingTool.py video.mp4
 ```
 
-## Parameters cheatsheet
+## train.py Parameters cheatsheet
 | Argument name     | Type  | Default value | Description |
 |-------------------|-------|---------------|-------------|
 |--weights          |str    |None           |Path to initial weights the model should be loaded with. If not specified, the model will be initialized with random weights.|

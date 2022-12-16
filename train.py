@@ -42,7 +42,8 @@ def parse_opt():
     parser.add_argument('--save_period', type=int, default=10, help='Save checkpoint every x epochs (disabled if <1).')
     parser.add_argument('--save_weights_only', type=bool, default=False, help='Save only weights, not the whole checkpoint')
     parser.add_argument('--save_path', type=str, default='weights/', help='Path to save checkpoints at.')
-    parser.parse_args()
+    opt = parser.parse_args()
+    return opt
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ import os
 
 class State(Enum):
     VISIBLE = 0
-    OCCLUDED = 1 
+    OCCLUDED = 1
     MOTION = 2
     NON_PLAY = 3
 
@@ -38,8 +38,8 @@ class VideoPlayer():
         ]
         cv.setMouseCallback('Frame',self.markBall)
         self.display()
-    
-        
+
+
     def markBall(self, event, x, y, flags, param):
         if event == cv.EVENT_LBUTTONDOWN:
             if self.frame_num in self.info['num']:
@@ -64,7 +64,7 @@ class VideoPlayer():
             x = self.info['x'][num]
             y = self.info['y'][num]
             visible = self.info['visible'][num]
-            cv.circle(res_frame, (x, y), 10, self.colors[visible], 10)
+            cv.circle(res_frame, (x, y), 2, self.colors[visible], 2)
         cv.imshow('Frame', res_frame)
         self.clicked = False
 
@@ -112,7 +112,7 @@ class VideoPlayer():
         cv.destroyAllWindows()
         df = pd.DataFrame.from_dict(self.info)
         df.to_csv(self.video_path+'.csv', index=False)
-        
+
 
     def __del__(self):
         self.finish()

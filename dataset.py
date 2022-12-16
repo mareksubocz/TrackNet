@@ -9,12 +9,13 @@ if "ipykernel" in sys.modules:  # executed in a jupyter notebook
     from tqdm.notebook import tqdm
 else:
     from tqdm import tqdm
+
 from pathlib import Path
 import cv2 as cv
 
 
 class GenericDataset(Dataset):
-    def __init__(self, root_dir, image_size=(600, 1200), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", sequence_length=3):
+    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", sequence_length=3):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
 
         Args:
@@ -27,9 +28,9 @@ class GenericDataset(Dataset):
         """
         self.image_size = image_size
         self.base_path = Path(root_dir)
-        self.csvs_dir = self.base_path.joinpath(csvs_folder)
+        self.csvs_dir = self.base_path / csvs_folder
         self.csvs_paths = self.csvs_dir.glob("*.csv")
-        self.heatmaps_dir = self.base_path.joinpath(heatmaps_folder)
+        self.heatmaps_dir = self.base_path / heatmaps_folder
         self.heatmaps_dir.mkdir(exist_ok=True)
         self.sequence_starters = {}
         self.sequence_length = sequence_length
@@ -39,18 +40,15 @@ class GenericDataset(Dataset):
         for csv_path in tqdm(list(self.csvs_paths)):
             self.sequence_starters[csv_path.stem] = []
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
-            curr_path = self.heatmaps_dir.joinpath(csv_path.stem)
+            curr_path = self.heatmaps_dir / csv_path.stem
             curr_path.mkdir(exist_ok=True)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
                 # TODO: utilize visibility info
-                if (force_recalculate_heatmaps or not curr_path.joinpath(
-                        str(row["num"])).with_suffix(".npy").is_file()):
+                if (force_recalculate_heatmaps or not (curr_path / str(row["num"])).with_suffix(".npy").is_file()):
                     heatmap = self.generate_heatmap(row["x"], row["y"], 100,
                                                     50)
-                    np.save(
-                        curr_path.joinpath(str(
-                            row["num"])).with_suffix(".npy"), heatmap)
+                    np.save((curr_path / str(row["num"])).with_suffix(".npy"), heatmap)
 
                 # checking if the sequence is consecutive
                 for i, prev_num in enumerate(prev_nums, start=1):
@@ -82,12 +80,10 @@ class GenericDataset(Dataset):
         for i in range(self.sequence_length):
             heatmaps.append(
                 np.expand_dims(
-                    np.load(
-                        self.heatmaps_dir.joinpath(img_name).joinpath(
-                            str(rel_idx + i)).with_suffix(".npy")),
+                    np.load((self.heatmaps_dir / img_name / str(rel_idx + i)).with_suffix(".npy")),
                     axis=0,
                 ))
-        heatmaps = torch.tensor(np.concatenate(heatmaps), requires_grad=False)
+        heatmaps = torch.tensor(np.concatenate(heatmaps), requires_grad=False, dtype=torch.float32)
 
         images = self.get_images(img_name, rel_idx)
 
@@ -124,9 +120,9 @@ class GenericDataset(Dataset):
             ImagesDataset | VideosDataset: Dataset of adequate type, if both videos and images folders are present, ImagesDataset is returned.
         """
         base_path = Path(root_dir)
-        if base_path.joinpath(images_folder).is_dir():
+        if (base_path / images_folder).is_dir():
             return ImagesDataset(root_dir, images_folder=images_folder)
-        elif base_path.joinpath(videos_folder).is_dir():
+        elif (base_path / videos_folder).is_dir():
             return VideosDataset(
                 root_dir,
                 videos_folder=videos_folder,
@@ -137,7 +133,7 @@ class GenericDataset(Dataset):
 
 
 class ImagesDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(600, 1200), force_recalculate_heatmaps=True, csvs_folder="csvs", heatmaps_folder="heatmaps", images_folder="images", sequence_length=3):
+    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=True, csvs_folder="csvs", heatmaps_folder="heatmaps", images_folder="images", sequence_length=3):
         """Pytorch dataset utilizing videos cut into frames. 
         Images are divided into folders named after the video they were taken from.
 
@@ -159,12 +155,12 @@ class ImagesDataset(GenericDataset):
             heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
         )
-        self.images_folder = self.base_path.joinpath(images_folder)
+        self.images_folder = self.base_path / images_folder
 
     def get_images(self, img_dir, rel_idx):
         images = []
         for _ in range(self.sequence_length):
-            image_path = self.images_folder.joinpath(img_dir).joinpath(str(rel_idx))
+            image_path = self.images_folder / img_dir / str(rel_idx)
             img = torch.tensor([], requires_grad=False)
             if image_path.with_suffix(".png").is_file():
                 img = torchvision.io.read_image(str(image_path.with_suffix(".png")))
@@ -178,7 +174,7 @@ class ImagesDataset(GenericDataset):
 
             img = torchvision.transforms.functional.resize(
                 img, self.image_size)
-            img = img.type(torch.FloatTensor)
+            img = img.type(torch.float32)
             img *= 1 / 255
             images.append(img)
 
@@ -187,16 +183,7 @@ class ImagesDataset(GenericDataset):
 
 # TODO: random access is slow, use IterableDataset and VideoReader for faster reading?
 class VideosDataset(GenericDataset):
-    def __init__(
-        self,
-        root_dir,
-        image_size=(600, 1200),
-        force_recalculate_heatmaps=True,
-        csvs_folder="csvs",
-        heatmaps_folder="heatmaps",
-        videos_folder="videos",
-        sequence_length=3,
-    ):
+    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=True, csvs_folder="csvs", heatmaps_folder="heatmaps", videos_folder="videos", sequence_length=3):
         """Pytorch dataset utilizing videos in .mp4 format.
 
         Args:
@@ -216,11 +203,11 @@ class VideosDataset(GenericDataset):
             heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
         )
-        self.videos_folder = self.base_path.joinpath(videos_folder)
+        self.videos_folder = self.base_path / videos_folder
 
     def get_images(self, img_dir, rel_idx):
         cap = cv.VideoCapture(
-            str(self.videos_folder.joinpath(img_dir).with_suffix(".mp4")))
+            str((self.videos_folder / img_dir).with_suffix(".mp4")))
         cap.set(cv.CAP_PROP_POS_FRAMES, rel_idx)
         images = []
         for _ in range(self.sequence_length):
@@ -230,7 +217,7 @@ class VideosDataset(GenericDataset):
             img = torch.from_numpy(img)
             img = torchvision.transforms.functional.resize(
                 img, self.image_size)
-            img = img.type(torch.FloatTensor)
+            img = img.type(torch.float32)
             img *= 1 / 255
             images.append(img)
         cap.release()
@@ -247,11 +234,11 @@ class VideosDataset(GenericDataset):
         Returns:
             ImagesDataset: Dataset with images instead of videos.
         """
-        images_dir = self.base_path.joinpath(images_folder)
+        images_dir = self.base_path / images_folder
         images_dir.mkdir(exist_ok=True)
         videos_list = list(self.videos_folder.glob("*.mp4"))
         for video_num, video_path in enumerate(videos_list):
-            images_dir.joinpath(video_path.name).mkdir(exist_ok=True)
+            (images_dir / video_path.name).mkdir(exist_ok=True)
             cap = cv.VideoCapture(str(video_path))
             frame_num = 0
             print(f"--({video_num+1}/{len(videos_list)})-- splitting {video_path.name}")
@@ -259,7 +246,7 @@ class VideosDataset(GenericDataset):
                 success, frame = cap.read()
                 if success:
                     cv.imwrite(
-                        str(images_dir.joinpath(video_path.name).joinpath(str(frame_num)).with_suffix(".png")),
+                        str((images_dir / video_path.name / str(frame_num)).with_suffix(".png")),
                         frame)
                 else:
                     break

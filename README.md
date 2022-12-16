@@ -21,12 +21,19 @@ Keybindings:
 - o : annotate occluded ball
 - m : annotate ball in motion (blurred)
 - v : annotate well-visible ball
-- n : play/pause video
+- n : fast-forward/pause video
 - q : finish annotating
 
 ```
 python labellingTool.py video.mp4
 ```
+
+<p align="center">
+  <img src="labelling_tool_demo.gif" alt="animated" />
+</p>
+<p align="center">
+  <em>Labelling tool in use. Fast-forward function is distorted due to gif compression.</em>
+</p>
 
 ## train.py Parameters cheatsheet
 | Argument name     | Type  | Default value | Description |

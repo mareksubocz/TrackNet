@@ -14,6 +14,16 @@ python train.py
 ```
 
 ## Dataset Labelling
+
+Keybindings:
+- l : next frame
+- h : previous frame
+- o : annotate occluded ball
+- m : annotate ball in motion (blurred)
+- v : annotate well-visible ball
+- n : play/pause video
+- q : finish annotating
+
 ```
 python labellingTool.py video.mp4
 ```

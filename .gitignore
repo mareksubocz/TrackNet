@@ -130,6 +130,7 @@ dmypy.json
 
 pyrightconfig.json
 
-dataset/
+datasets/
+runs/
 tmp/
 .DS_STORE

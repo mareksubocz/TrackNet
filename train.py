@@ -2,10 +2,14 @@ import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
+from PIL import Image
 
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image
+import torchvision
+import numpy as np
 
 import dataset
 from TrackNet import TrackNet
@@ -42,6 +46,10 @@ def parse_opt():
     parser.add_argument('--save_period', type=int, default=10, help='Save checkpoint every x epochs (disabled if <1).')
     parser.add_argument('--save_weights_only', type=bool, default=False, help='Save only weights, not the whole checkpoint')
     parser.add_argument('--save_path', type=str, default='weights/', help='Path to save checkpoints at.')
+    parser.add_argument('--force_recalculate_heatmaps', type=bool, default=False, help='Force recalculation of heatmaps even if they already exist.')
+    parser.add_argument('--use_tensorboard', type=bool, default=False, help='Use tensorboard to log training progress.')
+    parser.add_argument('--one_output_frame', type=bool, default=False, help='Demand only one output frame instead of three.')
+    parser.add_argument('--grayscale', type=bool, default=False, help='Use grayscale images instead of RGB.')
     opt = parser.parse_args()
     return opt
 
@@ -49,18 +57,20 @@ def parse_opt():
 if __name__ == '__main__':
     opt = parse_opt()
     device = torch.device(opt.device)
-    model = TrackNet().to(device)
+    model = TrackNet(one_output_frame=True, grayscale=opt.grayscale).to(device)
+    writer = SummaryWriter('runs/tracknet_experiment_1')
+    loss_function = torch.nn.HuberLoss()
 
     if opt.weights:
         model.load_state_dict(torch.load(opt.weights))
     optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum)
 
     if opt.type == 'auto':
-        full_dataset = dataset.GenericDataset.from_dir(opt.dataset)
+        full_dataset = dataset.GenericDataset.from_dir(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps, one_output_frame=opt.one_output_frame)
     elif opt.type == 'image':
-        full_dataset = dataset.ImagesDataset(opt.dataset)
+        full_dataset = dataset.ImagesDataset(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps,  one_output_frame=opt.one_output_frame)
     elif opt.type == 'video':
-        full_dataset = dataset.VideosDataset(opt.dataset)
+        full_dataset = dataset.VideosDataset(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps, one_output_frame=opt.one_output_frame)
 
     train_size = int(opt.train_size * len(full_dataset))
     val_size = len(full_dataset) - train_size
@@ -69,22 +79,86 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=opt.shuffle)
     val_loader = DataLoader(test_dataset, batch_size=opt.val_batch_size, shuffle=opt.shuffle)
     
-    ### Training loop
+
+    if opt.use_tensorboard:
+        images, heatmaps = next(iter(train_loader))
+        imgs = [images[0,3*i:3*(i+1),:,:] for i in range(3)]
+        htms = [heatmaps[0,i,:,:].unsqueeze(0) for i in range(3)]
+        imgs = torch.cat([img.unsqueeze(0) for img in imgs])
+        htms = torch.cat([htm.unsqueeze(0) for htm in htms])
+        writer.add_images('example image sequence', imgs)
+        writer.add_images('example heatmaps sequence', htms)
+    
+    ### Try single batch
+    print('Overfitting on a single batch.')
+    X,y = next(iter(train_loader))
+    if opt.grayscale:
+        X_grayscale = [torchvision.transforms.Grayscale(X[:,3*i:3*(i+1),:,:]) for i in range(3)]
+        X = torch.cat([img.unsqueeze(0) for img in X_grayscale])
+        
+        
+    X, y = X.to(device), y.to(device)
+    print('Error with zeros: ', loss_function(torch.zeros_like(y), y))
+    if opt.one_output_frame:
+        save_image(y[0,:,:], f'results/overfitting_ya.png')
+    else:
+        save_image(y[0,0,:,:], f'results/overfitting_ya-0.png')
+        save_image(y[0,1,:,:], f'results/overfitting_ya-1.png')
+        save_image(y[0,2,:,:], f'results/overfitting_ya-2.png')
+    
     for epoch in range(1, opt.epochs+1):
         print("Epoch: ", epoch)
         model.train()
         
-        # Training
+        optimizer.zero_grad()
+        y_pred = model(X)
+        # loss = wbce_loss(y_pred, y)
+        # loss = torch.nn.functional.mse_loss(y_pred, y)
+        loss = loss_function(y_pred, y)
+        loss.backward()
+        optimizer.step()
+
+            
+        model.eval()
+        # Validation
+        with torch.inference_mode():
+            y_pred = model(X)
+            # loss = wbce_loss(y_pred, y)
+            # loss = torch.nn.functional.mse_loss(y_pred, y)
+            loss = loss_function(y_pred, y)
+            if opt.one_output_frame:
+                save_image(y_pred[0,:,:], f'results/overfitting_ypred{epoch}.png')
+            else:
+                save_image(y_pred[0,0,:,:], f'results/overfitting_ypred{epoch}-0.png')
+                save_image(y_pred[0,1,:,:], f'results/overfitting_ypred{epoch}-1.png')
+                save_image(y_pred[0,2,:,:], f'results/overfitting_ypred{epoch}-2.png')
+            print(loss)
+    
+    print('Finished overfitting on single batch.')
+            
+            
+    ### Training loop
+    for epoch in range(1, opt.epochs+1):
+        print("Epoch: ", epoch)
+        running_loss = 0.0
+        model.train()
+        
         for batch_idx, (X, y) in enumerate(tqdm(train_loader)):
             X, y = X.to(device), y.to(device)
-            y_pred = model(X)
-            loss = wbce_loss(y_pred, y)
             optimizer.zero_grad()
+            y_pred = model(X)
+            loss = loss_function(y_pred, y)
             loss.backward()
             optimizer.step()
 
+            # running loss calculation
+            running_loss += loss.item()
+            
+            if batch_idx % 10 == 9:
+                model.eval()
+                writer.add_scalar('training loss', running_loss / (batch_idx+1), (epoch-1) * len(train_loader) + batch_idx)
+            
         model.eval()
-        
         # Validation
         with torch.inference_mode():
             for batch_idx, (X, y) in enumerate(val_loader):

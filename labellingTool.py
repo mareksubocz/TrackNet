@@ -13,10 +13,13 @@ class State(Enum):
 
 
 class VideoPlayer():
-    def __init__(self, video_path) -> None:
+    def __init__(self, video_path, relative=True) -> None:
         self.cap = cv.VideoCapture(video_path)
+        self.width  = int(self.cap.get(cv.cv.CV_CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.cap.get(cv.cv.CV_CAP_PROP_FRAME_HEIGHT)) 
         self.video_path = video_path
         self.window = cv.namedWindow('Frame', cv.WINDOW_AUTOSIZE)
+        self.relative = relative
         # cv.setWindowProperty('Frame', cv.WND_PROP_TOPMOST, 1)
         self.state = State.VISIBLE
         _, self.frame = self.cap.read()
@@ -111,6 +114,9 @@ class VideoPlayer():
         self.cap.release()
         cv.destroyAllWindows()
         df = pd.DataFrame.from_dict(self.info)
+        if self.relative:
+            df['x'] /= self.width
+            df['y'] /= self.height
         df.to_csv(self.video_path+'.csv', index=False)
 
 

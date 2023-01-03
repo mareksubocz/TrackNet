@@ -10,6 +10,7 @@ class TrackNet(nn.Module):
             nn.BatchNorm2d(num_features=out_channels)
         ]
         if dropout_rate > 1e-15:
+            print('!'*50, 'dropout used!')
             layer.append(nn.Dropout(dropout_rate))
         return nn.Sequential(*layer)
 
@@ -23,11 +24,14 @@ class TrackNet(nn.Module):
         return nn.Sequential(*layers)
 
 
-    def __init__(self, dropout_rate = 0.0):
+    def __init__(self, dropout_rate = 0.0, grayscale = False, one_output_frame = False):
         super().__init__()
 
         # VGG16
-        self.vgg_conv1 = self._make_convolution_layer(9, 64, 2, dropout_rate=dropout_rate)
+        if grayscale:
+            self.vgg_conv1 = self._make_convolution_layer(3, 64, 2, dropout_rate=dropout_rate)
+        else:
+            self.vgg_conv1 = self._make_convolution_layer(9, 64, 2, dropout_rate=dropout_rate)
         self.vgg_maxpool1 = nn.MaxPool2d((2,2), stride=(2,2))
         self.vgg_conv2 = self._make_convolution_layer(64, 128, 2, dropout_rate=dropout_rate)
         self.vgg_maxpool2 = nn.MaxPool2d((2,2), stride=(2,2))
@@ -43,8 +47,10 @@ class TrackNet(nn.Module):
         self.unet_upsample3 = nn.UpsamplingNearest2d(scale_factor=2)
         self.unet_conv3 = self._make_convolution_layer(192, 64, 2, dropout_rate=dropout_rate)
 
-        #FIXME: probably should have 3 channels, not 9
-        self.last_conv = nn.Conv2d(64, 3, kernel_size=(1,1), padding="same")
+        if one_output_frame:
+            self.last_conv = nn.Conv2d(64, 1, kernel_size=(1,1), padding="same")
+        else:
+            self.last_conv = nn.Conv2d(64, 3, kernel_size=(1,1), padding="same")
         self.last_sigmoid = nn.Sigmoid()
 
 

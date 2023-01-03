@@ -1,6 +1,7 @@
 import torch
 import torchvision
 from torch.utils.data import Dataset, DataLoader
+from torchvision.utils import save_image
 import pandas as pd
 import numpy as np
 import sys
@@ -15,7 +16,7 @@ import cv2 as cv
 
 
 class GenericDataset(Dataset):
-    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", sequence_length=3):
+    def __init__(self, root_dir, image_size=(360, 640), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", sequence_length=3, one_output_frame=False):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
 
         Args:
@@ -34,6 +35,7 @@ class GenericDataset(Dataset):
         self.heatmaps_dir.mkdir(exist_ok=True)
         self.sequence_starters = {}
         self.sequence_length = sequence_length
+        self.one_output_frame = one_output_frame
 
         # generate heatmaps folder and content
         print("Generating heatmaps...")
@@ -45,6 +47,7 @@ class GenericDataset(Dataset):
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
                 # TODO: utilize visibility info
+                # TODO: multiply x and y by image resize factor
                 if (force_recalculate_heatmaps or not (curr_path / str(row["num"])).with_suffix(".npy").is_file()):
                     heatmap = self.generate_heatmap(row["x"], row["y"], 100,
                                                     50)
@@ -77,15 +80,19 @@ class GenericDataset(Dataset):
             rel_idx = starters[rel_idx]
             break
         heatmaps = []
-        for i in range(self.sequence_length):
-            heatmaps.append(
-                np.expand_dims(
-                    np.load((self.heatmaps_dir / img_name / str(rel_idx + i)).with_suffix(".npy")),
-                    axis=0,
-                ))
-        heatmaps = torch.tensor(np.concatenate(heatmaps), requires_grad=False, dtype=torch.float32)
+        if self.one_output_frame:
+            heatmaps = np.load((self.heatmaps_dir / img_name / str(rel_idx + self.sequence_length-1)).with_suffix(".npy"))
+        else:
+            for i in range(self.sequence_length):
+                heatmaps.append(
+                    np.expand_dims(
+                        np.load((self.heatmaps_dir / img_name / str(rel_idx + i)).with_suffix(".npy")),
+                        axis=0,
+                    ))
+            heatmaps = np.concatenate(heatmaps)
 
-        images = self.get_images(img_name, rel_idx)
+        heatmaps = torch.tensor(heatmaps, requires_grad=False, dtype=torch.float32)
+        images = self.get_images(img_name, int(rel_idx))
 
         return images, heatmaps
 
@@ -97,6 +104,8 @@ class GenericDataset(Dataset):
         raise NotImplementedError
 
     def generate_heatmap(self, x, y, variance, size):
+        x = int(x * self.image_size[1])
+        y = int(y * self.image_size[0])
         x_grid, y_grid = np.mgrid[-size:size + 1, -size:size + 1]
         g = np.exp(-(x_grid**2 + y_grid**2) / float(2 * variance))
 
@@ -108,7 +117,7 @@ class GenericDataset(Dataset):
         return image
 
     @staticmethod
-    def from_dir(root_dir, images_folder="images", videos_folder="videos"):
+    def from_dir(root_dir, images_folder="images", videos_folder="videos", force_recalculate_heatmaps=False, one_output_frame=False):
         """Generate a dataset of adequate type given root directory.
 
         Args:
@@ -121,19 +130,21 @@ class GenericDataset(Dataset):
         """
         base_path = Path(root_dir)
         if (base_path / images_folder).is_dir():
-            return ImagesDataset(root_dir, images_folder=images_folder)
+            return ImagesDataset(root_dir, images_folder=images_folder, force_recalculate_heatmaps=force_recalculate_heatmaps, one_output_frame=one_output_frame)
         elif (base_path / videos_folder).is_dir():
             return VideosDataset(
                 root_dir,
                 videos_folder=videos_folder,
-                force_recalculate_heatmaps=True,
+                force_recalculate_heatmaps=force_recalculate_heatmaps,
+                one_output_frame=one_output_frame
             )
         else:
-            assert f"No '{images_folder}' or '{videos_folder}' folder found in dataset."
+            raise Exception(f"No '{images_folder}' or '{videos_folder}' folder found in dataset.")
+
 
 
 class ImagesDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=True, csvs_folder="csvs", heatmaps_folder="heatmaps", images_folder="images", sequence_length=3):
+    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", images_folder="images", sequence_length=3, one_output_frame=False):
         """Pytorch dataset utilizing videos cut into frames. 
         Images are divided into folders named after the video they were taken from.
 
@@ -154,23 +165,23 @@ class ImagesDataset(GenericDataset):
             csvs_folder=csvs_folder,
             heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
+            one_output_frame=one_output_frame
         )
         self.images_folder = self.base_path / images_folder
 
     def get_images(self, img_dir, rel_idx):
         images = []
-        for _ in range(self.sequence_length):
-            image_path = self.images_folder / img_dir / str(rel_idx)
+        for i in range(self.sequence_length):
+            image_path = self.images_folder / img_dir / str(rel_idx+i)
             img = torch.tensor([], requires_grad=False)
             if image_path.with_suffix(".png").is_file():
                 img = torchvision.io.read_image(str(image_path.with_suffix(".png")))
             elif image_path.with_suffix(".jpeg").is_file():
-                img = torchvision.io.read_image(
-                    image_path.with_suffix(".jpeg"))
+                img = torchvision.io.read_image(image_path.with_suffix(".jpeg"))
             elif image_path.with_suffix(".jpg").is_file():
                 img = torchvision.io.read_image(str(image_path.with_suffix(".jpg")))
             else:
-                assert f"No image {rel_idx} in folder {img_dir} found."
+                raise Exception(f"Image {rel_idx} in folder {img_dir} not found")
 
             img = torchvision.transforms.functional.resize(
                 img, self.image_size)
@@ -183,7 +194,7 @@ class ImagesDataset(GenericDataset):
 
 # TODO: random access is slow, use IterableDataset and VideoReader for faster reading?
 class VideosDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=True, csvs_folder="csvs", heatmaps_folder="heatmaps", videos_folder="videos", sequence_length=3):
+    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", videos_folder="videos", sequence_length=3, one_output_frame=False):
         """Pytorch dataset utilizing videos in .mp4 format.
 
         Args:
@@ -202,6 +213,7 @@ class VideosDataset(GenericDataset):
             csvs_folder=csvs_folder,
             heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
+            one_output_frame=one_output_frame
         )
         self.videos_folder = self.base_path / videos_folder
 
@@ -253,7 +265,7 @@ class VideosDataset(GenericDataset):
                 frame_num += 1
             cap.release()
 
-        return ImagesDataset(self.base_path, images_folder=images_folder)
+        return ImagesDataset(self.base_path, images_folder=images_folder, one_output_frame=self.one_output_frame)
 
 
 if __name__ == "__main__":

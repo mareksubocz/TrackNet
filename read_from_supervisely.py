@@ -38,6 +38,7 @@ def join_jsons_to_csv(root_path, relative=True):
 
                     # read only the first object
                     break
+
         df = pd.DataFrame.from_dict(res).sort_values(by=['num'])
         df['x'] /= video_width
         df['y'] /= video_height

@@ -5,6 +5,7 @@ from torchvision.utils import save_image
 import pandas as pd
 import numpy as np
 import sys
+import os
 
 if "ipykernel" in sys.modules:  # executed in a jupyter notebook
     from tqdm.notebook import tqdm
@@ -16,50 +17,36 @@ import cv2 as cv
 
 
 class GenericDataset(Dataset):
-    def __init__(self, root_dir, image_size=(360, 640), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", sequence_length=3, one_output_frame=False):
+    def __init__(self, base_path, image_size=(360, 640), csvs_folder="csvs", sequence_length=3, one_output_frame=False):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
 
         Args:
             root_dir (string): Path to the dataset folder.
             image_size (tuple[int], optional): Size that the images will be resized to.
-            force_recalculate_heatmaps (bool, optional): Should heatmaps be recalculated even if they are already present as a file.
             csvs_folder (str, optional): Name of the folder containing csvs.
-            heatmaps_folder (str, optional): Name of the folder containing heatmaps.
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
         self.image_size = image_size
-        self.base_path = Path(root_dir)
+        self.base_path = Path(base_path)
         self.csvs_dir = self.base_path / csvs_folder
-        self.csvs_paths = self.csvs_dir.glob("*.csv")
-        self.heatmaps_dir = self.base_path / heatmaps_folder
-        self.heatmaps_dir.mkdir(exist_ok=True)
         self.sequence_starters = {}
         self.sequence_length = sequence_length
         self.one_output_frame = one_output_frame
 
-        # generate heatmaps folder and content
-        print("Generating heatmaps...")
-        for csv_path in tqdm(list(self.csvs_paths)):
+
+        print('Calculating sequence starters...')
+        for csv_path in tqdm(list(self.csvs_dir.glob("*.csv"))):
             self.sequence_starters[csv_path.stem] = []
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
-            curr_path = self.heatmaps_dir / csv_path.stem
-            curr_path.mkdir(exist_ok=True)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
-                # TODO: utilize visibility info
-                # TODO: multiply x and y by image resize factor
-                if (force_recalculate_heatmaps or not (curr_path / str(row["num"])).with_suffix(".npy").is_file()):
-                    heatmap = self.generate_heatmap(row["x"], row["y"], 100,
-                                                    50)
-                    np.save((curr_path / str(row["num"])).with_suffix(".npy"), heatmap)
-
                 # checking if the sequence is consecutive
                 for i, prev_num in enumerate(prev_nums, start=1):
                     if prev_num != row["num"] - i:
                         break
                 else:
                     self.sequence_starters[csv_path.stem].append(
-                        row["num"] - (self.sequence_length - 1))
+                        int(row["num"]) - (self.sequence_length - 1))
                 prev_nums = [row["num"]] + prev_nums[:-1]
         print()
 
@@ -79,17 +66,17 @@ class GenericDataset(Dataset):
             img_name = curr_name
             rel_idx = starters[rel_idx]
             break
-        heatmaps = []
+
+        df = pd.read_csv((self.csvs_dir / img_name).with_suffix(".csv"))
         if self.one_output_frame:
-            heatmaps = np.load((self.heatmaps_dir / img_name / str(rel_idx + self.sequence_length-1)).with_suffix(".npy"))
+            df = df.loc[df['num'] == rel_idx + self.sequence_length // 2].iloc[0]
+            heatmaps = self.generate_heatmap(df["x"], df["y"], 100, 50)
         else:
-            for i in range(self.sequence_length):
-                heatmaps.append(
-                    np.expand_dims(
-                        np.load((self.heatmaps_dir / img_name / str(rel_idx + i)).with_suffix(".npy")),
-                        axis=0,
-                    ))
-            heatmaps = np.concatenate(heatmaps)
+            df = df.loc[df['num'].isin(range(rel_idx, rel_idx + self.sequence_length))]
+            heatmaps = []
+            for _, row in df.iterrows():
+                heatmaps.append(self.generate_heatmap(row["x"], row["y"], 100, 50))
+            heatmaps = np.stack(heatmaps, axis=0)
 
         heatmaps = torch.tensor(heatmaps, requires_grad=False, dtype=torch.float32)
         images = self.get_images(img_name, int(rel_idx))
@@ -103,21 +90,21 @@ class GenericDataset(Dataset):
         """
         raise NotImplementedError
 
-    def generate_heatmap(self, x, y, variance, size):
-        x = int(x * self.image_size[1])
-        y = int(y * self.image_size[0])
+    # TODO: utilize visibility info
+    def generate_heatmap(self, center_x, center_y, variance, size):
+        x = int(center_x * self.image_size[1])
+        y = int(center_y * self.image_size[0])
         x_grid, y_grid = np.mgrid[-size:size + 1, -size:size + 1]
         g = np.exp(-(x_grid**2 + y_grid**2) / float(2 * variance))
 
         image = np.zeros(self.image_size)
-        image = np.pad(image, size * 2)
-        # FIXME: ValueError: could not broadcast input array from shape (3,3) into shape (3,0)
-        image[y:2 * size + y + 1, x:2 * size + x + 1] = g
-        image = image[variance:-variance, variance:-variance]
+        image = np.pad(image, size)
+        image[y:y + (size*2) + 1, x:x + (size*2) + 1] = g
+        image = image[size:-size, size:-size]
         return image
 
     @staticmethod
-    def from_dir(root_dir, images_folder="images", videos_folder="videos", force_recalculate_heatmaps=False, one_output_frame=False):
+    def from_dir(root_dir, images_folder="images", videos_folder="videos", one_output_frame=False):
         """Generate a dataset of adequate type given root directory.
 
         Args:
@@ -130,12 +117,11 @@ class GenericDataset(Dataset):
         """
         base_path = Path(root_dir)
         if (base_path / images_folder).is_dir():
-            return ImagesDataset(root_dir, images_folder=images_folder, force_recalculate_heatmaps=force_recalculate_heatmaps, one_output_frame=one_output_frame)
+            return ImagesDataset(root_dir, images_folder=images_folder, one_output_frame=one_output_frame)
         elif (base_path / videos_folder).is_dir():
             return VideosDataset(
                 root_dir,
                 videos_folder=videos_folder,
-                force_recalculate_heatmaps=force_recalculate_heatmaps,
                 one_output_frame=one_output_frame
             )
         else:
@@ -144,16 +130,14 @@ class GenericDataset(Dataset):
 
 
 class ImagesDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", images_folder="images", sequence_length=3, one_output_frame=False):
+    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", images_folder="images", sequence_length=3, one_output_frame=False):
         """Pytorch dataset utilizing videos cut into frames. 
         Images are divided into folders named after the video they were taken from.
 
         Args:
             root_dir (string): Path to the dataset folder.
             image_size (tuple[int], optional): Size that the images will be resized to.
-            force_recalculate_heatmaps (bool, optional): Should heatmaps be recalculated even if they are already present as a file.
             csvs_folder (str, optional): Name of the folder containing csvs.
-            heatmaps_folder (str, optional): Name of the folder containing heatmaps.
             images_folder (str, optional): Name of the folder containing images folders.
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
@@ -161,9 +145,7 @@ class ImagesDataset(GenericDataset):
         super().__init__(
             root_dir,
             image_size=image_size,
-            force_recalculate_heatmaps=force_recalculate_heatmaps,
             csvs_folder=csvs_folder,
-            heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
             one_output_frame=one_output_frame
         )
@@ -183,8 +165,7 @@ class ImagesDataset(GenericDataset):
             else:
                 raise Exception(f"Image {rel_idx} in folder {img_dir} not found")
 
-            img = torchvision.transforms.functional.resize(
-                img, self.image_size)
+            img = torchvision.transforms.functional.resize(img, self.image_size)
             img = img.type(torch.float32)
             img *= 1 / 255
             images.append(img)
@@ -194,24 +175,21 @@ class ImagesDataset(GenericDataset):
 
 # TODO: random access is slow, use IterableDataset and VideoReader for faster reading?
 class VideosDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), force_recalculate_heatmaps=False, csvs_folder="csvs", heatmaps_folder="heatmaps", videos_folder="videos", sequence_length=3, one_output_frame=False):
+    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", videos_folder="videos", sequence_length=3, one_output_frame=False):
         """Pytorch dataset utilizing videos in .mp4 format.
 
         Args:
             root_dir (string): Path to the dataset folder.
             image_size (tuple[int], optional): Size that the images will be resized to.
-            force_recalculate_heatmaps (bool, optional): Should heatmaps be recalculated even if they are already present as a file.
             csvs_folder (str, optional): Name of the folder containing csvs.
-            heatmaps_folder (str, optional): Name of the folder containing heatmaps.
             videos_folder (str, optional): Name of the folder containing videos.
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
+        
         super().__init__(
             root_dir,
             image_size=image_size,
-            force_recalculate_heatmaps=force_recalculate_heatmaps,
             csvs_folder=csvs_folder,
-            heatmaps_folder=heatmaps_folder,
             sequence_length=sequence_length,
             one_output_frame=one_output_frame
         )
@@ -223,7 +201,7 @@ class VideosDataset(GenericDataset):
         cap.set(cv.CAP_PROP_POS_FRAMES, rel_idx)
         images = []
         for _ in range(self.sequence_length):
-            ret, img = cap.read()
+            _, img = cap.read()
             # using opencv the image will have channels as last dimension
             img = img.transpose(2, 0, 1)
             img = torch.from_numpy(img)
@@ -269,8 +247,29 @@ class VideosDataset(GenericDataset):
 
 
 if __name__ == "__main__":
-    dataset = ImagesDataset("./dataset/")
+    dataset = GenericDataset.from_dir("./dataset/")
     # dataset = dataset.to_images_dataset()
     dl = DataLoader(dataset, batch_size=2, shuffle=True)
     for i, (x, y) in enumerate(dl):
         print(f"{i}: ", x.shape, y.shape)
+    
+
+    # generate heatmap
+    x = 0.4
+    y = 0.7
+    variance = 3
+    size = 3
+    image_size = (512, 1024)
+
+    x = int(x * image_size[1])
+    y = int(y * image_size[0])
+    x_grid, y_grid = np.mgrid[-size:size + 1, -size:size + 1]
+    g = np.exp(-(x_grid**2 + y_grid**2) / float(2 * variance))
+    
+    image = np.zeros(image_size)
+    image = np.pad(image, size)
+    image[y:2 * size + y + 1, x:2 * size + x + 1] = g
+    image = image[size:-size, size:-size]
+    print(image.shape)
+    print(image_size)
+    save_image(torch.from_numpy(image), "test.png")

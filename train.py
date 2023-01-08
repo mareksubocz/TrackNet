@@ -46,31 +46,32 @@ def parse_opt():
     parser.add_argument('--save_period', type=int, default=10, help='Save checkpoint every x epochs (disabled if <1).')
     parser.add_argument('--save_weights_only', type=bool, default=False, help='Save only weights, not the whole checkpoint')
     parser.add_argument('--save_path', type=str, default='weights/', help='Path to save checkpoints at.')
-    parser.add_argument('--force_recalculate_heatmaps', type=bool, default=False, help='Force recalculation of heatmaps even if they already exist.')
     parser.add_argument('--use_tensorboard', type=bool, default=False, help='Use tensorboard to log training progress.')
     parser.add_argument('--one_output_frame', type=bool, default=False, help='Demand only one output frame instead of three.')
     parser.add_argument('--grayscale', type=bool, default=False, help='Use grayscale images instead of RGB.')
     opt = parser.parse_args()
+    print(opt.one_output_frame)
     return opt
 
 
 if __name__ == '__main__':
     opt = parse_opt()
     device = torch.device(opt.device)
-    model = TrackNet(one_output_frame=True, grayscale=opt.grayscale).to(device)
+    model = TrackNet(one_output_frame=opt.one_output_frame, grayscale=opt.grayscale).to(device)
     writer = SummaryWriter('runs/tracknet_experiment_1')
-    loss_function = torch.nn.HuberLoss()
+    # loss_function = torch.nn.HuberLoss()
+    loss_function = wbce_loss
 
     if opt.weights:
         model.load_state_dict(torch.load(opt.weights))
     optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum)
 
     if opt.type == 'auto':
-        full_dataset = dataset.GenericDataset.from_dir(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps, one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.GenericDataset.from_dir(opt.dataset, one_output_frame=opt.one_output_frame)
     elif opt.type == 'image':
-        full_dataset = dataset.ImagesDataset(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps,  one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.ImagesDataset(opt.dataset,  one_output_frame=opt.one_output_frame)
     elif opt.type == 'video':
-        full_dataset = dataset.VideosDataset(opt.dataset, force_recalculate_heatmaps=opt.force_recalculate_heatmaps, one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.VideosDataset(opt.dataset, one_output_frame=opt.one_output_frame)
 
     train_size = int(opt.train_size * len(full_dataset))
     val_size = len(full_dataset) - train_size
@@ -93,15 +94,18 @@ if __name__ == '__main__':
     print('Overfitting on a single batch.')
     X,y = next(iter(train_loader))
     if opt.grayscale:
-        X_grayscale = [torchvision.transforms.Grayscale(X[:,3*i:3*(i+1),:,:]) for i in range(3)]
-        X = torch.cat([img.unsqueeze(0) for img in X_grayscale])
+        X_grayscale = [torchvision.transforms.functional.rgb_to_grayscale(X[:,3*i:3*(i+1),:,:]) for i in range(3)]
+        X = torch.cat(X_grayscale, axis=1)
         
         
     X, y = X.to(device), y.to(device)
     print('Error with zeros: ', loss_function(torch.zeros_like(y), y))
     if opt.one_output_frame:
+        print(opt.one_output_frame)
         save_image(y[0,:,:], f'results/overfitting_ya.png')
+        save_image(X[0,:,:], f'results/overfitting_xa.png')
     else:
+        save_image(X[0,:,:], f'results/overfitting_xa.png')
         save_image(y[0,0,:,:], f'results/overfitting_ya-0.png')
         save_image(y[0,1,:,:], f'results/overfitting_ya-1.png')
         save_image(y[0,2,:,:], f'results/overfitting_ya-2.png')

@@ -5,7 +5,6 @@ from torchvision.utils import save_image
 import pandas as pd
 import numpy as np
 import sys
-import os
 
 if "ipykernel" in sys.modules:  # executed in a jupyter notebook
     from tqdm.notebook import tqdm

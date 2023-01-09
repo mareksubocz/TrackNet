@@ -10,6 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image
 import torchvision
 import numpy as np
+import cv2 as cv
 
 import dataset
 from TrackNet import TrackNet
@@ -59,8 +60,8 @@ if __name__ == '__main__':
     device = torch.device(opt.device)
     model = TrackNet(one_output_frame=opt.one_output_frame, grayscale=opt.grayscale).to(device)
     writer = SummaryWriter('runs/tracknet_experiment_1')
-    # loss_function = torch.nn.HuberLoss()
-    loss_function = wbce_loss
+    loss_function = torch.nn.HuberLoss()
+    # loss_function = wbce_loss
 
     if opt.weights:
         model.load_state_dict(torch.load(opt.weights))
@@ -97,7 +98,6 @@ if __name__ == '__main__':
         X_grayscale = [torchvision.transforms.functional.rgb_to_grayscale(X[:,3*i:3*(i+1),:,:]) for i in range(3)]
         X = torch.cat(X_grayscale, axis=1)
         
-        
     X, y = X.to(device), y.to(device)
     print('Error with zeros: ', loss_function(torch.zeros_like(y), y))
     if opt.one_output_frame:
@@ -116,8 +116,6 @@ if __name__ == '__main__':
         
         optimizer.zero_grad()
         y_pred = model(X)
-        # loss = wbce_loss(y_pred, y)
-        # loss = torch.nn.functional.mse_loss(y_pred, y)
         loss = loss_function(y_pred, y)
         loss.backward()
         optimizer.step()

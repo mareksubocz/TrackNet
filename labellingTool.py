@@ -136,6 +136,7 @@ def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('video_path', type=str, help='Path to the video file.')
     parser.add_argument('--csv_dir', type=str, default=None, help='Path to the directory where csv file should be saved. If not specified, csv file will be saved in the same directory as the video file.')
+    parser.add_argument('--remove_duplicate_frames', type=bool, default=False, help='Should identical consecutie frames be reduces to one frame.')
     opt = parser.parse_args()
     return opt
 
@@ -174,6 +175,8 @@ def remove_duplicate_frames(video_path, output_path):
 if __name__ == '__main__':
     # remove_duplicate_frames('./dataset/videos/cut+2020.12.19-19.35-182088.mp4', './dataset/videos/NoDups1.mp4')
     opt = parse_opt()
+    if opt.remove_duplicate_frames == True:
+        remove_duplicate_frames(opt.video_path, opt.video_path)
     player = VideoPlayer(opt)
     while(player.cap.isOpened()):
         player.run()

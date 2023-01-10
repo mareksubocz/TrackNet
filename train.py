@@ -41,6 +41,7 @@ def parse_opt():
     parser.add_argument('--train_size', type=float, default=0.8, help='Training dataset size.')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate.')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
+    parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate. If equals to 0.0, no dropout is used.')
     parser.add_argument('--dataset', type=str, default='dataset/', help='Path to dataset.')
     parser.add_argument('--device', type=str, default='cpu', help='Device to use (cpu, cuda, mps).')
     parser.add_argument('--type', type=str, default='auto', help='Type of dataset to create (auto, image, video). If auto, the dataset type will be inferred from the dataset directory, defaulting to image.')
@@ -58,21 +59,23 @@ def parse_opt():
 if __name__ == '__main__':
     opt = parse_opt()
     device = torch.device(opt.device)
-    model = TrackNet(one_output_frame=opt.one_output_frame, grayscale=opt.grayscale).to(device)
+    model = TrackNet(opt.dropout, opt.grayscale, opt.one_output_frame).to(device)
     writer = SummaryWriter('runs/tracknet_experiment_1')
-    loss_function = torch.nn.HuberLoss()
-    # loss_function = wbce_loss
+    loss_function = torch.nn.MSELoss()
+    # loss_function = torch.nn.HuberLoss()
+    # loss_function = wbce_loss # doesn't work for some reason
+    # loss_function = torch.nn.L1Loss()
 
     if opt.weights:
         model.load_state_dict(torch.load(opt.weights))
     optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum)
 
     if opt.type == 'auto':
-        full_dataset = dataset.GenericDataset.from_dir(opt.dataset, one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.GenericDataset.from_dir(opt.dataset, one_output_frame=opt.one_output_frame, grayscale=opt.grayscale)
     elif opt.type == 'image':
-        full_dataset = dataset.ImagesDataset(opt.dataset,  one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.ImagesDataset(opt.dataset,  one_output_frame=opt.one_output_frame, grayscale=opt.grayscale)
     elif opt.type == 'video':
-        full_dataset = dataset.VideosDataset(opt.dataset, one_output_frame=opt.one_output_frame)
+        full_dataset = dataset.VideosDataset(opt.dataset, one_output_frame=opt.one_output_frame, grayscale=opt.grayscale)
 
     train_size = int(opt.train_size * len(full_dataset))
     val_size = len(full_dataset) - train_size
@@ -91,21 +94,20 @@ if __name__ == '__main__':
         writer.add_images('example image sequence', imgs)
         writer.add_images('example heatmaps sequence', htms)
     
-    ### Try single batch
+    ###########################################################################
+    ######################## Single batch overfitting #########################
+    ###########################################################################
     print('Overfitting on a single batch.')
+
     X,y = next(iter(train_loader))
-    if opt.grayscale:
-        X_grayscale = [torchvision.transforms.functional.rgb_to_grayscale(X[:,3*i:3*(i+1),:,:]) for i in range(3)]
-        X = torch.cat(X_grayscale, axis=1)
-        
     X, y = X.to(device), y.to(device)
     print('Error with zeros: ', loss_function(torch.zeros_like(y), y))
     if opt.one_output_frame:
         print(opt.one_output_frame)
-        save_image(y[0,:,:], f'results/overfitting_ya.png')
-        save_image(X[0,:,:], f'results/overfitting_xa.png')
+        save_image(y[0,0,:,:], f'results/overfitting_ya.png')
+        save_image(X[0,0,:,:], f'results/overfitting_xa.png')
     else:
-        save_image(X[0,:,:], f'results/overfitting_xa.png')
+        save_image(X[0,0,:,:], f'results/overfitting_xa.png')
         save_image(y[0,0,:,:], f'results/overfitting_ya-0.png')
         save_image(y[0,1,:,:], f'results/overfitting_ya-1.png')
         save_image(y[0,2,:,:], f'results/overfitting_ya-2.png')
@@ -125,8 +127,6 @@ if __name__ == '__main__':
         # Validation
         with torch.inference_mode():
             y_pred = model(X)
-            # loss = wbce_loss(y_pred, y)
-            # loss = torch.nn.functional.mse_loss(y_pred, y)
             loss = loss_function(y_pred, y)
             if opt.one_output_frame:
                 save_image(y_pred[0,:,:], f'results/overfitting_ypred{epoch}.png')
@@ -138,13 +138,16 @@ if __name__ == '__main__':
     
     print('Finished overfitting on single batch.')
             
-            
-    ### Training loop
+
+    ###########################################################################
+    ############################## Training loop ##############################
+    ###########################################################################
+
     for epoch in range(1, opt.epochs+1):
         print("Epoch: ", epoch)
         running_loss = 0.0
-        model.train()
         
+        model.train()
         for batch_idx, (X, y) in enumerate(tqdm(train_loader)):
             X, y = X.to(device), y.to(device)
             optimizer.zero_grad()
@@ -160,8 +163,8 @@ if __name__ == '__main__':
                 model.eval()
                 writer.add_scalar('training loss', running_loss / (batch_idx+1), (epoch-1) * len(train_loader) + batch_idx)
             
+        ############################## Validation ##############################
         model.eval()
-        # Validation
         with torch.inference_mode():
             for batch_idx, (X, y) in enumerate(val_loader):
                 X, y = X.to(device), y.to(device)

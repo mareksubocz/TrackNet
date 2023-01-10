@@ -1,9 +1,14 @@
 from pathlib import Path
-import cv2 as cv
+from cv2 import VideoCapture, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, \
+    WINDOW_AUTOSIZE, namedWindow, setMouseCallback, EVENT_LBUTTONDOWN, putText, \
+    FONT_HERSHEY_SIMPLEX, imshow, destroyAllWindows, LINE_AA, circle, waitKeyEx, \
+    CAP_PROP_POS_FRAMES, CAP_PROP_FRAME_COUNT, VideoWriter, VideoWriter_fourcc, \
+    PSNR
 from enum import Enum
-import pandas as pd
+from tqdm import tqdm
+from pandas import read_csv, DataFrame
 import os
-import argparse
+import sys
 
 class State(Enum):
     VISIBLE = 0
@@ -13,16 +18,13 @@ class State(Enum):
 
 
 class VideoPlayer():
-    def __init__(self, opt) -> None:
-        self.cap = cv.VideoCapture(opt.video_path)
-        self.width  = int(self.cap.get(cv.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv.CAP_PROP_FRAME_HEIGHT)) 
-        self.video_path = Path(opt.video_path)
-        if opt.csv_dir is None:
-            self.csv_path = self.video_path.with_suffix('.csv')
-        else:
-            self.csv_path = Path(opt.csv_dir) / Path(self.video_path.stem).with_suffix('.csv')
-        self.window = cv.namedWindow('Frame', cv.WINDOW_AUTOSIZE)
+    def __init__(self, video_path) -> None:
+        self.cap = VideoCapture(video_path)
+        self.width  = int(self.cap.get(CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.cap.get(CAP_PROP_FRAME_HEIGHT)) 
+        self.video_path = Path(video_path)
+        self.csv_path = self.video_path.with_suffix('.csv')
+        self.window = namedWindow('Frame', WINDOW_AUTOSIZE)
         # cv.setWindowProperty('Frame', cv.WND_PROP_TOPMOST, 1)
         self.state = State.VISIBLE
         _, self.frame = self.cap.read()
@@ -31,7 +33,7 @@ class VideoPlayer():
         self.x = None
         self.y = None
         if os.path.exists(self.csv_path):
-            self.info = pd.read_csv(self.csv_path)
+            self.info = read_csv(self.csv_path)
             if self.info['x'].max() > 1 or self.info['y'].max() > 1:
                 self.info['x'] /= self.width
                 self.info['y'] /= self.height
@@ -44,14 +46,14 @@ class VideoPlayer():
             (0,0,255),
             (255,255,255)
         ]
-        cv.setMouseCallback('Frame',self.markBall)
+        setMouseCallback('Frame',self.markBall)
         self.display()
 
 
     def markBall(self, event, x, y, flags, param):
         x /= self.width
         y /= self.height
-        if event == cv.EVENT_LBUTTONDOWN:
+        if event == EVENT_LBUTTONDOWN:
             if self.frame_num in self.info['num']:
                 num = self.info['num'].index(self.frame_num)
                 self.info['x'][num] = x
@@ -67,20 +69,20 @@ class VideoPlayer():
 
     def display(self):
         res_frame = self.frame.copy()
-        res_frame = cv.putText(res_frame, self.state.name, (100, 100),
-                           cv.FONT_HERSHEY_SIMPLEX, 2, self.colors[self.state.value], 2, cv.LINE_AA)
+        res_frame = putText(res_frame, self.state.name, (100, 100),
+                           FONT_HERSHEY_SIMPLEX, 2, self.colors[self.state.value], 2, LINE_AA)
         if self.frame_num in self.info['num']:
             num = self.info['num'].index(self.frame_num)
             x = int(self.info['x'][num] * self.width)
             y = int(self.info['y'][num] * self.height)
             visible = self.info['visible'][num]
-            cv.circle(res_frame, (x, y), 2, self.colors[visible], 2)
-        cv.imshow('Frame', res_frame)
+            circle(res_frame, (x, y), 5, self.colors[visible], 2)
+        imshow('Frame', res_frame)
         self.clicked = False
 
 
     def run(self):
-        key = cv.waitKeyEx(1)
+        key = waitKeyEx(1)
         if key == ord('n'):
             if self.state == State.NON_PLAY:
                 self.state = State.VISIBLE
@@ -100,8 +102,8 @@ class VideoPlayer():
         if key == ord('l'):
             self.clicked = True
         if key == ord('h'):
-            self.cap.set(cv.CAP_PROP_POS_FRAMES, self.frame_num - 1)
-            self.frame_num = int(self.cap.get(cv.CAP_PROP_POS_FRAMES) - 1)
+            self.cap.set(CAP_PROP_POS_FRAMES, self.frame_num - 1)
+            self.frame_num = int(self.cap.get(CAP_PROP_POS_FRAMES) - 1)
             self.clicked = True
         if key == ord('q'):
             self.finish()
@@ -119,8 +121,8 @@ class VideoPlayer():
 
     def finish(self):
         self.cap.release()
-        cv.destroyAllWindows()
-        df = pd.DataFrame.from_dict(self.info)
+        destroyAllWindows()
+        df = DataFrame.from_dict(self.info)
         df.to_csv(self.csv_path, index=False)
 
 
@@ -128,29 +130,25 @@ class VideoPlayer():
         self.finish()
 
 
-def parse_opt():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('video_path', type=str, help='Path to the video file.')
-    parser.add_argument('--csv_dir', type=str, default=None, help='Path to the directory where csv file should be saved. If not specified, csv file will be saved in the same directory as the video file.')
-    parser.add_argument('--remove_duplicate_frames', type=bool, default=False, help='Should identical consecutie frames be reduces to one frame.')
-    opt = parser.parse_args()
-    return opt
-
-
 def remove_duplicate_frames(video_path, output_path):
     # Open the video file
-    vid = cv.VideoCapture(video_path)
+    vid = VideoCapture(video_path)
+    vidlength = int(vid.get(CAP_PROP_FRAME_COUNT))
 
     # Set the frame width and height
-    frame_width = int(vid.get(cv.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(vid.get(cv.CAP_PROP_FRAME_HEIGHT))
+    frame_width = int(vid.get(CAP_PROP_FRAME_WIDTH))
+    frame_height = int(vid.get(CAP_PROP_FRAME_HEIGHT))
 
     # Create a VideoWriter object for the output video file
-    out = cv.VideoWriter(output_path, cv.VideoWriter_fourcc(*'mp4v'), 30.0, (frame_width, frame_height))
+    out = VideoWriter(output_path, VideoWriter_fourcc(*'mp4v'), 30.0, (frame_width, frame_height))
 
     # Read and process the frames one by one
     previous_frame = None
-    while True:
+
+    print("Usuwanie zduplikowanych klatek...")
+    pbar = tqdm(range(vidlength))
+    duplicated_num = 0
+    for _ in pbar:
         # Read the next frame
         success, frame = vid.read()
 
@@ -159,20 +157,30 @@ def remove_duplicate_frames(video_path, output_path):
             break
 
         # If the current frame is not a duplicate, write it to the output video
-        if previous_frame is None or cv.PSNR(frame, previous_frame) < 32.:
+        if previous_frame is None or PSNR(frame, previous_frame) < 40.:
             out.write(frame)
+        else:
+            duplicated_num += 1
+            pbar.set_description(f"Ilość klatek-duplikatów: {duplicated_num}")
 
         # Update the previous frame
         previous_frame = frame
-    print('finished removing duplicates')
-
+    print('Zakończono usuwanie zduplikowanych klatek.')
 
 
 if __name__ == '__main__':
-    # remove_duplicate_frames('./dataset/videos/cut+2020.12.19-19.35-182088.mp4', './dataset/videos/NoDups1.mp4')
-    opt = parse_opt()
-    if opt.remove_duplicate_frames == True:
-        remove_duplicate_frames(opt.video_path, opt.video_path)
-    player = VideoPlayer(opt)
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
+    elif __file__:
+        application_path = os.path.dirname(__file__)
+    p  = Path(application_path)
+    video_path = next(p.glob('*.mp4'))
+    toRemove = input('Czy usuwać zduplikowane klatki? Wpisz "t" lub "n": \n')
+    if toRemove == 't':
+        bez_duplikatow_video_path = str(video_path.with_name('bez_duplikatow_' + video_path.name))
+        remove_duplicate_frames(str(video_path), bez_duplikatow_video_path)
+        video_path = bez_duplikatow_video_path
+    video_path = str(video_path)
+    player = VideoPlayer(video_path)
     while(player.cap.isOpened()):
         player.run()

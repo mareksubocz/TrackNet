@@ -16,7 +16,7 @@ import cv2 as cv
 
 
 class GenericDataset(Dataset):
-    def __init__(self, base_path, image_size=(360, 640), csvs_folder="csvs", sequence_length=3, one_output_frame=False):
+    def __init__(self, base_path, image_size=(360, 640), csvs_folder="csvs", sequence_length=3, one_output_frame=False, grayscale=False):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
 
         Args:
@@ -31,6 +31,7 @@ class GenericDataset(Dataset):
         self.sequence_starters = {}
         self.sequence_length = sequence_length
         self.one_output_frame = one_output_frame
+        self.grayscale = grayscale
 
 
         print('Calculating sequence starters...')
@@ -80,6 +81,11 @@ class GenericDataset(Dataset):
         heatmaps = torch.tensor(heatmaps, requires_grad=False, dtype=torch.float32)
         images = self.get_images(img_name, int(rel_idx))
 
+        if self.grayscale:
+            X_grayscale = [torchvision.transforms.functional.rgb_to_grayscale(images[3*i:3*(i+1),:,:]) for i in range(self.sequence_length)]
+            images = torch.cat(X_grayscale, axis=0)
+
+
         return images, heatmaps
 
     def get_images(self, img_name: str | Path, rel_idx: int) -> torch.Tensor:
@@ -103,7 +109,7 @@ class GenericDataset(Dataset):
         return image
 
     @staticmethod
-    def from_dir(root_dir, images_folder="images", videos_folder="videos", one_output_frame=False):
+    def from_dir(root_dir, images_folder="images", videos_folder="videos", one_output_frame=False, grayscale=False):
         """Generate a dataset of adequate type given root directory.
 
         Args:
@@ -121,7 +127,8 @@ class GenericDataset(Dataset):
             return VideosDataset(
                 root_dir,
                 videos_folder=videos_folder,
-                one_output_frame=one_output_frame
+                one_output_frame=one_output_frame,
+                grayscale=grayscale
             )
         else:
             raise Exception(f"No '{images_folder}' or '{videos_folder}' folder found in dataset.")
@@ -129,7 +136,7 @@ class GenericDataset(Dataset):
 
 
 class ImagesDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", images_folder="images", sequence_length=3, one_output_frame=False):
+    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", images_folder="images", sequence_length=3, one_output_frame=False, grayscale=False):
         """Pytorch dataset utilizing videos cut into frames. 
         Images are divided into folders named after the video they were taken from.
 
@@ -146,7 +153,8 @@ class ImagesDataset(GenericDataset):
             image_size=image_size,
             csvs_folder=csvs_folder,
             sequence_length=sequence_length,
-            one_output_frame=one_output_frame
+            one_output_frame=one_output_frame,
+            grayscale=grayscale
         )
         self.images_folder = self.base_path / images_folder
 
@@ -174,7 +182,7 @@ class ImagesDataset(GenericDataset):
 
 # TODO: random access is slow, use IterableDataset and VideoReader for faster reading?
 class VideosDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", videos_folder="videos", sequence_length=3, one_output_frame=False):
+    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", videos_folder="videos", sequence_length=3, one_output_frame=False, grayscale=False):
         """Pytorch dataset utilizing videos in .mp4 format.
 
         Args:
@@ -190,7 +198,8 @@ class VideosDataset(GenericDataset):
             image_size=image_size,
             csvs_folder=csvs_folder,
             sequence_length=sequence_length,
-            one_output_frame=one_output_frame
+            one_output_frame=one_output_frame,
+            grayscale=grayscale
         )
         self.videos_folder = self.base_path / videos_folder
 
@@ -242,7 +251,7 @@ class VideosDataset(GenericDataset):
                 frame_num += 1
             cap.release()
 
-        return ImagesDataset(self.base_path, images_folder=images_folder, one_output_frame=self.one_output_frame)
+        return ImagesDataset(self.base_path, images_folder=images_folder, one_output_frame=self.one_output_frame, grayscale=self.grayscale)
 
 
 if __name__ == "__main__":

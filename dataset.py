@@ -71,6 +71,7 @@ class GenericDataset(Dataset):
         if self.one_output_frame:
             df = df.loc[df['num'] == rel_idx + self.sequence_length // 2].iloc[0]
             heatmaps = self.generate_heatmap(df["x"], df["y"], 100, 50)
+            heatmaps = np.expand_dims(heatmaps, axis=0)
         else:
             df = df.loc[df['num'].isin(range(rel_idx, rel_idx + self.sequence_length))]
             heatmaps = []

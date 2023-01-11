@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 from pathlib import Path
+import sys
 
 def split_images_to_folders(root_path):
     for f in Path(root_path).glob('img/*'):
@@ -46,7 +47,30 @@ def join_jsons_to_csv(root_path, relative=True):
         df['height'] /= video_height
         df.to_csv(root_path / (video.name+'.csv'), index=False)
         
+
+def jsons_to_csv(root_path):
+    root_path = Path(root_path)
+    for filename in (root_path).glob('*.json'):
+        res = {'num': [], 'x': [], 'y': [], 'visible': [], 'height': [], 'width': []}
+        with open(filename, 'r') as f:
+            root = json.load(f)
+            video_width = root['size']['width']
+            video_height = root['size']['height']
+            for frame in root['frames']:
+                res['num'].append(frame['index'])
+                x1 = frame['figures'][0]['geometry']['points']['exterior'][0][0]
+                y1 = frame['figures'][0]['geometry']['points']['exterior'][0][1]
+                x2 = frame['figures'][0]['geometry']['points']['exterior'][1][0]
+                y2 = frame['figures'][0]['geometry']['points']['exterior'][1][1]
+                res['x'].append(((x1+x2)/2) / video_width)
+                res['y'].append(((y1+y2)/2) / video_height)
+                res['visible'].append(1)
+                res['width'].append((x2-x1) / video_width)
+                res['height'].append((y2-y1) / video_height)
+        
+        df = pd.DataFrame.from_dict(res).sort_values(by=['num'])
+        print(df)
+        df.to_csv(root_path / (filename.stem+'.csv'), index=False)
+
 if __name__ == '__main__':
-    root_path = '/Users/mareksubocz/Downloads/BeaverShort2/3mins-no-frames/'
-    split_images_to_folders(root_path)
-    join_jsons_to_csv(root_path)
+    jsons_to_csv(sys.argv[1])

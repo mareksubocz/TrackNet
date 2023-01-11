@@ -37,6 +37,7 @@ class GenericDataset(Dataset):
         print('Calculating sequence starters...')
         for csv_path in tqdm(list(self.csvs_dir.glob("*.csv"))):
             self.sequence_starters[csv_path.stem] = []
+            # reset prev_nums
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
@@ -47,6 +48,9 @@ class GenericDataset(Dataset):
                 else:
                     self.sequence_starters[csv_path.stem].append(
                         int(row["num"]) - (self.sequence_length - 1))
+                    # reset prev_nums
+                    prev_num = [-self.sequence_length] * (self.sequence_length - 1)
+                    continue
                 prev_nums = [row["num"]] + prev_nums[:-1]
         print()
 

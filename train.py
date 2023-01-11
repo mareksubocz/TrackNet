@@ -81,14 +81,22 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                 if not opt.no_save_output_examples:
                     save_image(y[0,0,:,:], f'results/epoch_{epoch}_batch{batch_idx}_y.png')
                     save_image(y_pred[0,0,:,:], f'results/epoch_{epoch}_batch{batch_idx}_y_pred.png')
-                    writer.add_image('Train/y', torch.unsqueeze(y[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
-                    writer.add_image('Train/y_pred', torch.unsqueeze(y_pred[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
+                    # writer.add_image('Train/y', torch.unsqueeze(y[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
+                    # writer.add_image('Train/y_pred', torch.unsqueeze(y_pred[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
+                    images = [
+                        torch.unsqueeze(y[0,0,:,:], 0).repeat(3,1,1),
+                        torch.unsqueeze(y_pred[0,0,:,:], 0).repeat(3,1,1),
+                    ]
                     if opt.grayscale:
-                        writer.add_image('Train/X', X[0,:,:,:], epoch * len(train_loader) + batch_idx)
+                        # writer.add_image('Train/X', X[0,:,:,:], epoch * len(train_loader) + batch_idx)
                         save_image(X[0,:,:,:], f'results/epoch_{epoch}_batch{batch_idx}_X.png')
+                        images.append(X[0,:,:,:])
                     else:
-                        writer.add_image('Train/X', X[0,(2,1,0),:,:], epoch * len(train_loader) + batch_idx)
+                        # writer.add_image('Train/X', X[0,(2,1,0),:,:], epoch * len(train_loader) + batch_idx)
                         save_image(X[0,(2,1,0),:,:], f'results/epoch_{epoch}_batch{batch_idx}_X.png')
+                        images.append(X[0,(2,1,0),:,:])
+                    grid = torchvision.utils.make_grid(images, nrow=1)#, padding=2)
+                    writer.add_image('Train', grid, epoch*len(train_loader) + batch_idx)
 
         if val_loader is not None:
             val_loss = validation_loop(device, model, loss_function, val_loader)

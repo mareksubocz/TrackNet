@@ -25,7 +25,7 @@ Keybindings:
 - n    : go to next annotated frame
 - x    : remove annotation
 - =/+  : enlarge the annotation mark size
-- -    : reduce the annotation mark size
+- \-    : reduce the annotation mark size
 - q    : finish annotating and save results
 
 ```

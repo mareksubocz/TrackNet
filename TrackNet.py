@@ -24,30 +24,30 @@ class TrackNet(nn.Module):
         return nn.Sequential(*layers)
 
 
-    def __init__(self, dropout_rate = 0.0, grayscale = False, one_output_frame = False):
+    def __init__(self, opt):
         super().__init__()
 
         # VGG16
-        if grayscale:
-            self.vgg_conv1 = self._make_convolution_layer(3, 64, 2, dropout_rate=dropout_rate)
+        if opt.grayscale:
+            self.vgg_conv1 = self._make_convolution_layer(3, 64, 2, dropout_rate=opt.dropout)
         else:
-            self.vgg_conv1 = self._make_convolution_layer(9, 64, 2, dropout_rate=dropout_rate)
+            self.vgg_conv1 = self._make_convolution_layer(9, 64, 2, dropout_rate=opt.dropout)
         self.vgg_maxpool1 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv2 = self._make_convolution_layer(64, 128, 2, dropout_rate=dropout_rate)
+        self.vgg_conv2 = self._make_convolution_layer(64, 128, 2, dropout_rate=opt.dropout)
         self.vgg_maxpool2 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv3 = self._make_convolution_layer(128, 256, 3, dropout_rate=dropout_rate)
+        self.vgg_conv3 = self._make_convolution_layer(128, 256, 3, dropout_rate=opt.dropout)
         self.vgg_maxpool3 = nn.MaxPool2d((2,2), stride=(2,2))
-        self.vgg_conv4 = self._make_convolution_layer(256, 512, 3, dropout_rate=dropout_rate)
+        self.vgg_conv4 = self._make_convolution_layer(256, 512, 3, dropout_rate=opt.dropout)
 
         # Deconv / UNet
         self.unet_upsample1 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv1 = self._make_convolution_layer(768, 256, 3, dropout_rate=dropout_rate)
+        self.unet_conv1 = self._make_convolution_layer(768, 256, 3, dropout_rate=opt.dropout)
         self.unet_upsample2 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv2 = self._make_convolution_layer(384, 128, 2, dropout_rate=dropout_rate)
+        self.unet_conv2 = self._make_convolution_layer(384, 128, 2, dropout_rate=opt.dropout)
         self.unet_upsample3 = nn.UpsamplingNearest2d(scale_factor=2)
-        self.unet_conv3 = self._make_convolution_layer(192, 64, 2, dropout_rate=dropout_rate)
+        self.unet_conv3 = self._make_convolution_layer(192, 64, 2, dropout_rate=opt.dropout)
 
-        if one_output_frame:
+        if opt.one_output_frame:
             self.last_conv = nn.Conv2d(64, 1, kernel_size=(1,1), padding="same")
         else:
             self.last_conv = nn.Conv2d(64, 3, kernel_size=(1,1), padding="same")
@@ -86,7 +86,7 @@ class TrackNet(nn.Module):
 
 
     def load(self, path, device='cpu'):
-        self.load_state_dict(torch.load(path, map_location=device))
+        self.load_state_dict(torch.load(path, map_location=device)['model_state_dict'])
 
 
 if __name__ == '__main__':

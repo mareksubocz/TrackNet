@@ -15,8 +15,11 @@ from pathlib import Path
 import cv2 as cv
 
 
+#TODO: think how to rewrite keeping of dataset parts so that it can be queried by dataframes
+# perhaps would be best to filter it during dataset creation
+#TODO: iterative, faster dataset
 class GenericDataset(Dataset):
-    def __init__(self, base_path, image_size=(360, 640), csvs_folder="csvs", sequence_length=3, one_output_frame=False, grayscale=False):
+    def __init__(self, opt):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
 
         Args:
@@ -25,13 +28,15 @@ class GenericDataset(Dataset):
             csvs_folder (str, optional): Name of the folder containing csvs.
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
-        self.image_size = image_size
-        self.base_path = Path(base_path)
-        self.csvs_dir = self.base_path / csvs_folder
+        self.opt = opt
+        self.image_size = opt.image_size
+        self.base_path = Path(opt.dataset)
+        self.csvs_dir = self.base_path / opt.csvs_dir
         self.sequence_starters = {}
-        self.sequence_length = sequence_length
-        self.one_output_frame = one_output_frame
-        self.grayscale = grayscale
+        self.sequence_length = opt.sequence_length
+        self.one_output_frame = opt.one_output_frame
+        self.grayscale = opt.grayscale
+        self.video_tags = pd.read_csv(self.base_path / "video_tags.csv")
 
 
         print('Calculating sequence starters...')
@@ -41,6 +46,8 @@ class GenericDataset(Dataset):
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
+                if row['inPlay'] != 1:
+                    continue
                 # checking if the sequence is consecutive
                 for i, prev_num in enumerate(prev_nums, start=1):
                     if prev_num != row["num"] - i:
@@ -55,13 +62,17 @@ class GenericDataset(Dataset):
         print()
 
     def __len__(self):
-        return sum(len(v) for v in self.sequence_starters.values())
+        res = 0
+        for filename in self.video_tags['filename']:
+            res += len(self.sequence_starters[filename])
+        return res
 
     def __getitem__(self, idx):
         rel_idx = idx
         img_name = ""
 
-        for curr_name, starters in self.sequence_starters.items():
+        for curr_name in self.video_tags['filename']:
+            starters = self.sequence_starters[curr_name]
             # next folder
             if rel_idx >= len(starters):
                 rel_idx -= len(starters)
@@ -114,7 +125,7 @@ class GenericDataset(Dataset):
         return image
 
     @staticmethod
-    def from_dir(root_dir, images_folder="images", videos_folder="videos", one_output_frame=False, grayscale=False):
+    def from_dir(opt):
         """Generate a dataset of adequate type given root directory.
 
         Args:
@@ -125,23 +136,18 @@ class GenericDataset(Dataset):
         Returns:
             ImagesDataset | VideosDataset: Dataset of adequate type, if both videos and images folders are present, ImagesDataset is returned.
         """
-        base_path = Path(root_dir)
-        if (base_path / images_folder).is_dir():
-            return ImagesDataset(root_dir, images_folder=images_folder, one_output_frame=one_output_frame)
-        elif (base_path / videos_folder).is_dir():
-            return VideosDataset(
-                root_dir,
-                videos_folder=videos_folder,
-                one_output_frame=one_output_frame,
-                grayscale=grayscale
-            )
+        base_path = Path(opt.dataset)
+        if (base_path / opt.images_dir).is_dir():
+            return ImagesDataset(opt)
+        elif (base_path / opt.videos_dir).is_dir():
+            return VideosDataset(opt)
         else:
-            raise Exception(f"No '{images_folder}' or '{videos_folder}' folder found in dataset.")
+            raise Exception(f"No '{opt.images_dir}' or '{opt.videos_dir}' folder found in dataset.")
 
 
 
 class ImagesDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", images_folder="images", sequence_length=3, one_output_frame=False, grayscale=False):
+    def __init__(self, opt):
         """Pytorch dataset utilizing videos cut into frames. 
         Images are divided into folders named after the video they were taken from.
 
@@ -153,15 +159,8 @@ class ImagesDataset(GenericDataset):
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
 
-        super().__init__(
-            root_dir,
-            image_size=image_size,
-            csvs_folder=csvs_folder,
-            sequence_length=sequence_length,
-            one_output_frame=one_output_frame,
-            grayscale=grayscale
-        )
-        self.images_folder = self.base_path / images_folder
+        super().__init__(opt)
+        self.images_folder = self.base_path / opt.images_dir
 
     def get_images(self, img_dir, rel_idx):
         images = []
@@ -187,7 +186,7 @@ class ImagesDataset(GenericDataset):
 
 # TODO: random access is slow, use IterableDataset and VideoReader for faster reading?
 class VideosDataset(GenericDataset):
-    def __init__(self, root_dir, image_size=(512, 1024), csvs_folder="csvs", videos_folder="videos", sequence_length=3, one_output_frame=False, grayscale=False):
+    def __init__(self, opt):
         """Pytorch dataset utilizing videos in .mp4 format.
 
         Args:
@@ -198,15 +197,8 @@ class VideosDataset(GenericDataset):
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
         
-        super().__init__(
-            root_dir,
-            image_size=image_size,
-            csvs_folder=csvs_folder,
-            sequence_length=sequence_length,
-            one_output_frame=one_output_frame,
-            grayscale=grayscale
-        )
-        self.videos_folder = self.base_path / videos_folder
+        super().__init__(opt)
+        self.videos_folder = self.base_path / opt.videos_dir
 
     def get_images(self, img_dir, rel_idx):
         cap = cv.VideoCapture(
@@ -256,7 +248,7 @@ class VideosDataset(GenericDataset):
                 frame_num += 1
             cap.release()
 
-        return ImagesDataset(self.base_path, images_folder=images_folder, one_output_frame=self.one_output_frame, grayscale=self.grayscale)
+        return ImagesDataset(self.opt)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  siatkowka:
+    build: .
+    image: siatkowka:latest
+    container_name: volley_demo
+    networks:
+      - deploy_network
+    working_dir: /app
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    environment:
+      DEBUG: 1
+
+networks:
+  deploy_network:
+    driver: bridge

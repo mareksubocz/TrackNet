@@ -1,13 +1,11 @@
-from pathlib import Path
-import cv2 as cv
-import numpy as np
-import sys
-from enum import Enum
-import pandas as pd
-import os
 import argparse
-from skimage.metrics import structural_similarity as compare_ssim
-from tqdm import tqdm
+import os
+from enum import Enum
+from pathlib import Path
+
+import cv2 as cv
+import pandas as pd
+
 
 class State(Enum):
     VISIBLE = 0
@@ -19,8 +17,8 @@ class State(Enum):
 class VideoPlayer():
     def __init__(self, opt) -> None:
         self.cap = cv.VideoCapture(opt.video_path)
-        self.width  = int(self.cap.get(cv.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv.CAP_PROP_FRAME_HEIGHT)) 
+        self.width = int(self.cap.get(cv.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.cap.get(cv.CAP_PROP_FRAME_HEIGHT))
         self.video_path = Path(opt.video_path)
         if opt.csv_dir is None:
             self.csv_path = self.video_path.with_suffix('.csv')
@@ -43,14 +41,13 @@ class VideoPlayer():
         else:
             self.info = {'num': [], 'x': [], 'y': [], 'visible': []}
         self.colors = [
-            (0,255,0),
-            (255,0,0),
-            (0,0,255),
-            (255,255,255)
+            (0, 255, 0),
+            (255, 0, 0),
+            (0, 0, 255),
+            (255, 255, 255)
         ]
-        cv.setMouseCallback('Frame',self.markBall)
+        cv.setMouseCallback('Frame', self.markBall)
         self.display()
-
 
     def markBall(self, event, x, y, flags, param):
         x /= self.width
@@ -68,11 +65,10 @@ class VideoPlayer():
                 self.info['visible'].append(self.state.value)
             self.clicked = True
 
-
     def display(self):
         res_frame = self.frame.copy()
         res_frame = cv.putText(res_frame, self.state.name, (100, 100),
-                           cv.FONT_HERSHEY_SIMPLEX, 2, self.colors[self.state.value], 2, cv.LINE_AA)
+                               cv.FONT_HERSHEY_SIMPLEX, 2, self.colors[self.state.value], 2, cv.LINE_AA)
         if self.frame_num in self.info['num']:
             num = self.info['num'].index(self.frame_num)
             x = int(self.info['x'][num] * self.width)
@@ -81,7 +77,6 @@ class VideoPlayer():
             cv.circle(res_frame, (x, y), 2, self.colors[visible], 2)
         cv.imshow('Frame', res_frame)
         self.clicked = False
-
 
     def run(self):
         key = cv.waitKeyEx(1)
@@ -120,13 +115,11 @@ class VideoPlayer():
                 return
         self.display()
 
-
     def finish(self):
         self.cap.release()
         cv.destroyAllWindows()
         df = pd.DataFrame.from_dict(self.info)
         df.to_csv(self.csv_path, index=False)
-
 
     def __del__(self):
         self.finish()
@@ -135,8 +128,10 @@ class VideoPlayer():
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('video_path', type=str, help='Path to the video file.')
-    parser.add_argument('--csv_dir', type=str, default=None, help='Path to the directory where csv file should be saved. If not specified, csv file will be saved in the same directory as the video file.')
-    parser.add_argument('--remove_duplicate_frames', type=bool, default=False, help='Should identical consecutie frames be reduces to one frame.')
+    parser.add_argument('--csv_dir', type=str, default=None,
+                        help='Path to the directory where csv file should be saved. If not specified, csv file will be saved in the same directory as the video file.')
+    parser.add_argument('--remove_duplicate_frames', type=bool, default=False,
+                        help='Should identical consecutie frames be reduces to one frame.')
     opt = parser.parse_args()
     return opt
 
@@ -171,12 +166,11 @@ def remove_duplicate_frames(video_path, output_path):
     print('finished removing duplicates')
 
 
-
 if __name__ == '__main__':
     # remove_duplicate_frames('./dataset/videos/cut+2020.12.19-19.35-182088.mp4', './dataset/videos/NoDups1.mp4')
     opt = parse_opt()
     if opt.remove_duplicate_frames == True:
         remove_duplicate_frames(opt.video_path, opt.video_path)
     player = VideoPlayer(opt)
-    while(player.cap.isOpened()):
+    while (player.cap.isOpened()):
         player.run()

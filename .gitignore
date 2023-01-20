@@ -135,3 +135,6 @@ runs/
 tmp/
 .DS_STORE
 results/
+
+.idea/*
+dataset/

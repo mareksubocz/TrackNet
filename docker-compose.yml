@@ -11,8 +11,8 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
       - "8501:8501"
+      - "8000:8000"
     environment:
       DEBUG: 1
 

@@ -62,28 +62,21 @@ python labellingTool.py video.mp4
 
 ## Docker
 
-Steps for running an app:
-
+To initialize docker image and run container use:
 ```
-docker build -t volleyball Dockerfile        
-```
-
-then use:
-
-```
-docker-compose -d up app 
+docker-compose up  
 ```
 
 check what's inside container with:
 ```
-docker exec -it volleyball bash 
+docker exec -it volley_demo bash 
 ```
 
 
 ## Streamlit
 
-For presentation purpose small demo page using <b>Streamlit</b>. Page is available under: http://demo
+For presentation purpose small demo page using <b>Streamlit</b>. Page is available under: http://<streamlit_ip>:8501
 
 ## Api
 
-Proper endpoints for <b>Streamlit</b> demo App are created via FastAPI under: http://api
+Proper endpoints for <b>Streamlit</b> demo App are created via FastAPI under: http://<fastapi_ip>:8000

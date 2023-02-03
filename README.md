@@ -1,5 +1,5 @@
 # TrackNet
-Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2) (improvements in progress).
+Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2).
 
 ## Installation
 ```

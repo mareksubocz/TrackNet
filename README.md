@@ -1,5 +1,5 @@
 # TrackNet
-Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2) (improvements in progress).
+Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2).
 
 ## Installation
 ```
@@ -16,17 +16,17 @@ python train.py
 ## Dataset Labelling
 
 Keybindings:
-- l/→  : next frame
-- h/←  : previous frame
-- v    : annotate well-visible ball
-- o    : annotate occluded ball
-- m    : annotate ball in motion (blurred)
-- f    : fast-forward/pause video
-- n    : go to next annotated frame
-- x    : remove annotation
-- =/+  : enlarge the annotation mark size
-- -    : reduce the annotation mark size
-- q    : finish annotating and save results
+- <kbd>l</kbd> / <kbd>→</kbd>  : next frame
+- <kbd>h</kbd> / <kbd>←</kbd>  : previous frame
+- <kbd>v</kbd>    : annotate well-visible ball
+- <kbd>o</kbd>    : annotate occluded ball
+- <kbd>m</kbd>    : annotate ball in motion (blurred)
+- <kbd>f</kbd>    : fast-forward/pause video
+- <kbd>n</kbd>    : go to next annotated frame
+- <kbd>x</kbd>    : remove annotation
+- <kbd>=</kbd> / <kbd>+</kbd>  : enlarge the annotation mark size
+- <kbd>-</kbd>    : reduce the annotation mark size
+- <kbd>q</kbd>    : finish annotating and save results
 
 ```
 python labellingTool.py video.mp4

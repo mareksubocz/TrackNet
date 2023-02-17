@@ -19,7 +19,7 @@ keybindings = {
     'occluded':      [ ord('o'), ],
     'motion':        [ ord('m'), ],
     'fast-forward':  [ ord('f'), ],
-    'next_selection':[ ord('n'), ], 
+    'next_selection':[ ord('n'), ],
     'remove':        [ ord('x'), ],
     'circle_grow':   [ ord('='), ord('+') ],
     'circle_shrink': [ ord('-'), ],
@@ -30,7 +30,7 @@ class VideoPlayer():
     def __init__(self, opt) -> None:
         self.cap = cv.VideoCapture(opt.video_path)
         self.width  = int(self.cap.get(cv.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv.CAP_PROP_FRAME_HEIGHT)) 
+        self.height = int(self.cap.get(cv.CAP_PROP_FRAME_HEIGHT))
         self.video_path = Path(opt.video_path)
         self.circle_size = 10
         if opt.csv_dir is None:

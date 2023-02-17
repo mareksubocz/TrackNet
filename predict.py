@@ -1,8 +1,30 @@
 from argparse import ArgumentParser
 from TrackNet import TrackNet
+import numpy as np
 import torchvision
 import torch
-import cv2
+import cv2 as cv
+
+
+def get_ball_position(img, original_img_=None):
+    ret, thresh = cv.threshold(img, 0.9, 1, 0)
+    thresh = cv.convertScaleAbs(thresh)
+
+    contours,hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+    # numpy image
+    if len(contours) != 0:
+
+        #find the biggest area of the contour
+        c = max(contours, key = cv.contourArea)
+
+        if original_img_ is not None:
+            # the contours are drawn here
+            cv.drawContours(original_img_, [c], -1, 255, 3)
+            cv.drawContours(img, [c], -1, 255, 3)
+
+        x,y,w,h = cv.boundingRect(c)
+        return x, y, w, h
+
 
 def parse_opt():
     parser = ArgumentParser()
@@ -26,27 +48,29 @@ if __name__ == '__main__':
     model.load(opt.weights, device = device)
     model.eval()
     
-    cap = cv2.VideoCapture(opt.video)
+    cap = cv.VideoCapture(opt.video)
     prev_frame_1 = None
     prev_frame_2 = None
     while cap.isOpened():
         ret,frame = cap.read()
-        cv2.imshow('original', frame)
-        frame = torch.tensor(frame).permute(2, 0, 1).float().to(device) / 255
-        frame = torchvision.transforms.functional.resize(frame, opt.image_size)
+        frame_torch = torch.tensor(frame).permute(2, 0, 1).float().to(device) / 255
+        frame_torch = torchvision.transforms.functional.resize(frame_torch, opt.image_size)
 
 
         if prev_frame_1 is not None and prev_frame_2 is not None:
-            frames = torch.cat([prev_frame_2, prev_frame_1, frame], dim=0).unsqueeze(0)
+            frames = torch.cat([prev_frame_2, prev_frame_1, frame_torch], dim=0).unsqueeze(0)
             pred = model(frames)
             pred = pred[0,0,:,:].detach().cpu().numpy()
-            cv2.imshow('prediction', pred)
+            frame_resized = cv.resize(frame, pred.shape[::-1], interpolation = cv.INTER_AREA)
+            get_ball_position(pred, original_img_=frame_resized)
+            cv.imshow('prediction', pred)
+            cv.imshow('original', frame_resized)
         prev_frame_2 = prev_frame_1
-        prev_frame_1 = frame
+        prev_frame_1 = frame_torch
 
-        if cv2.waitKey(10) & 0xFF == ord('q'):
+        if cv.waitKey(10) & 0xFF == ord('q'):
             break
 
 
     cap.release()
-    cv2.destroyAllWindows() # destroy all opened windows
+    cv.destroyAllWindows() # destroy all opened windows

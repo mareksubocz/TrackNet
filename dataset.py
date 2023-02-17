@@ -6,10 +6,11 @@ import pandas as pd
 import numpy as np
 import sys
 
-if "ipykernel" in sys.modules:  # executed in a jupyter notebook
-    from tqdm.notebook import tqdm
-else:
-    from tqdm import tqdm
+# if "ipykernel" in sys.modules:  # executed in a jupyter notebook
+#     from tqdm.notebook import tqdm
+# else:
+#     from tqdm import tqdm
+from tqdm import tqdm
 
 from pathlib import Path
 import cv2 as cv
@@ -36,7 +37,6 @@ class GenericDataset(Dataset):
         self.sequence_length = opt.sequence_length
         self.one_output_frame = opt.one_output_frame
         self.grayscale = opt.grayscale
-        self.video_tags = pd.read_csv(self.base_path / "video_tags.csv")
 
 
         print('Calculating sequence starters...')
@@ -46,7 +46,7 @@ class GenericDataset(Dataset):
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
-                if row['inPlay'] != 1:
+                if row['visible'] != 0:
                     continue
                 # checking if the sequence is consecutive
                 for i, prev_num in enumerate(prev_nums, start=1):
@@ -56,42 +56,47 @@ class GenericDataset(Dataset):
                     self.sequence_starters[csv_path.stem].append(
                         int(row["num"]) - (self.sequence_length - 1))
                     # reset prev_nums
-                    prev_num = [-self.sequence_length] * (self.sequence_length - 1)
+                    if not opt.include_dups:
+                        prev_num = [-self.sequence_length] * (self.sequence_length - 1)
                     continue
                 prev_nums = [row["num"]] + prev_nums[:-1]
         print()
 
     def __len__(self):
-        res = 0
-        for filename in self.video_tags['filename']:
-            res += len(self.sequence_starters[filename])
-        return res
+        return sum(len(s) for s in self.sequence_starters.values())
 
     def __getitem__(self, idx):
         rel_idx = idx
         img_name = ""
 
-        for curr_name in self.video_tags['filename']:
-            starters = self.sequence_starters[curr_name]
+        for curr_name in list(self.csvs_dir.glob("*.csv")):
+            starters = self.sequence_starters[curr_name.stem]
             # next folder
             if rel_idx >= len(starters):
                 rel_idx -= len(starters)
                 continue
             # found the folder
-            img_name = curr_name
+            img_name = curr_name.stem
             rel_idx = starters[rel_idx]
             break
 
         df = pd.read_csv((self.csvs_dir / img_name).with_suffix(".csv"))
+        if 'width' not in df.columns:
+            df['width'] = 50
+        if 'height' not in df.columns:
+            df['height'] = 50
         if self.one_output_frame:
             df = df.loc[df['num'] == rel_idx + self.sequence_length // 2].iloc[0]
-            heatmaps = self.generate_heatmap(df["x"], df["y"], 100, 50)
+            heatmaps = self.generate_heatmap_2(df["x"], df["y"], df["width"], df["height"])
+            # heatmaps = self.generate_heatmap(df["x"], df["y"], 100, 50)
+
             heatmaps = np.expand_dims(heatmaps, axis=0)
         else:
             df = df.loc[df['num'].isin(range(rel_idx, rel_idx + self.sequence_length))]
             heatmaps = []
             for _, row in df.iterrows():
-                heatmaps.append(self.generate_heatmap(row["x"], row["y"], 100, 50))
+                heatmaps.append(self.generate_heatmap_2(row["x"], row["y"], row["width"], row["height"]))
+                # heatmaps.append(self.generate_heatmap(row["x"], row["y"], 100, 50))
             heatmaps = np.stack(heatmaps, axis=0)
 
         heatmaps = torch.tensor(heatmaps, requires_grad=False, dtype=torch.float32)
@@ -124,6 +129,29 @@ class GenericDataset(Dataset):
         image = image[size:-size, size:-size]
         return image
 
+
+    def generate_heatmap_2(self, center_x, center_y, width, height):
+        """ Make a square gaussian kernel.
+
+        size is the length of a side of the square
+        fwhm is full-width-half-maximum, which
+        can be thought of as an effective radius.
+
+        source: https://stackoverflow.com/questions/7687679/how-to-generate-2d-gaussian-with-python
+        """
+        x = np.arange(0, self.image_size[1], 1, float)
+        y = np.arange(0, self.image_size[0], 1, float)[:,np.newaxis]
+
+        x0 = self.image_size[1]*center_x
+        y0 = self.image_size[0]*center_y
+        width = self.image_size[1]*width
+        height = self.image_size[0]*height
+
+        image = np.exp(-4*np.log(2) * ((x-x0)**2/width**2 + (y-y0)**2/height**2))
+        return image
+
+
+
     @staticmethod
     def from_dir(opt):
         """Generate a dataset of adequate type given root directory.
@@ -148,7 +176,7 @@ class GenericDataset(Dataset):
 
 class ImagesDataset(GenericDataset):
     def __init__(self, opt):
-        """Pytorch dataset utilizing videos cut into frames. 
+        """Pytorch dataset utilizing videos cut into frames.
         Images are divided into folders named after the video they were taken from.
 
         Args:
@@ -196,7 +224,7 @@ class VideosDataset(GenericDataset):
             videos_folder (str, optional): Name of the folder containing videos.
             sequence_length (int, optional): Length of the image sequence used for ball detection.
         """
-        
+
         super().__init__(opt)
         self.videos_folder = self.base_path / opt.videos_dir
 
@@ -251,13 +279,62 @@ class VideosDataset(GenericDataset):
         return ImagesDataset(self.opt)
 
 
+# def makeGaussian(image_size, size, variance, center):
+#     """_summary_
+#
+#     Args:
+#         image_size (_type_): _description_
+#         size (_type_): _description_
+#         variance (int): To have the ball as value > 0.5, variance should be ball_radius * 8
+#         center (_type_): _description_
+#
+#     Returns:
+#         _type_: _description_
+#     """
+#     x = int(center[1] * image_size[1])
+#     y = int(center[0] * image_size[0])
+#     x_grid, y_grid = np.mgrid[-size:size + 1, -size:size + 1]
+#     g = np.exp(-(x_grid**2 + y_grid**2) / float(2 * variance))
+#
+#     image = np.zeros(image_size)
+#     image = np.pad(image, size)
+#     image[y:y + (size*2) + 1, x:x + (size*2) + 1] = g
+#     image = image[size:-size, size:-size]
+#     return image
+
+
+def makeGaussian(size = (1200, 600), fwhm = (100, 50), center=(0.5, 0.5)):
+    """ Make a square gaussian kernel.
+
+    size is the length of a side of the square
+    fwhm is full-width-half-maximum, which
+    can be thought of as an effective radius.
+
+    source: https://stackoverflow.com/questions/7687679/how-to-generate-2d-gaussian-with-python
+    """
+
+    x = np.arange(0, size[0], 1, float)
+    # y = x[:,np.newaxis]
+    y = np.arange(0, size[1], 1, float)[:,np.newaxis]
+
+    x0 = size[0]*center[0]
+    y0 = size[1]*center[1]
+
+    return np.exp(-4*np.log(2) * ((x-x0)**2/fwhm[0]**2 + (y-y0)**2/fwhm[1]**2))
+
+
 if __name__ == "__main__":
+    # from matplotlib import pyplot as plt
+    # plt.imshow(makeGaussian(center=(0.1, 0.4)), interpolation='nearest', vmin=0, vmax=1)
+    # plt.show()
+    #
+    # exit(0)
     dataset = GenericDataset.from_dir("./dataset/")
     # dataset = dataset.to_images_dataset()
     dl = DataLoader(dataset, batch_size=2, shuffle=True)
     for i, (x, y) in enumerate(dl):
         print(f"{i}: ", x.shape, y.shape)
-    
+
 
     # generate heatmap
     x = 0.4
@@ -270,7 +347,7 @@ if __name__ == "__main__":
     y = int(y * image_size[0])
     x_grid, y_grid = np.mgrid[-size:size + 1, -size:size + 1]
     g = np.exp(-(x_grid**2 + y_grid**2) / float(2 * variance))
-    
+
     image = np.zeros(image_size)
     image = np.pad(image, size)
     image[y:2 * size + y + 1, x:2 * size + x + 1] = g

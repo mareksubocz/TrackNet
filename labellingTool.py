@@ -52,7 +52,7 @@ class VideoPlayer():
                 self.info['y'] /= self.height
             self.info = {k: list(v.values()) for k, v in self.info.to_dict().items()}
         else:
-            self.info = {'num': [], 'x': [], 'y': [], 'visible': []}
+            self.info = {'frame_num': [], 'x': [], 'y': [], 'visible': []}
         self.colors = [
             (0,255,0),
             (255,0,0),
@@ -67,13 +67,13 @@ class VideoPlayer():
         x /= self.width
         y /= self.height
         if event == cv.EVENT_LBUTTONDOWN:
-            if self.frame_num in self.info['num']:
-                num = self.info['num'].index(self.frame_num)
+            if self.frame_num in self.info['frame_num']:
+                num = self.info['frame_num'].index(self.frame_num)
                 self.info['x'][num] = x
                 self.info['y'][num] = y
                 self.info['visible'][num] = self.state.value
             else:
-                self.info['num'].append(self.frame_num)
+                self.info['frame_num'].append(self.frame_num)
                 self.info['x'].append(x)
                 self.info['y'].append(y)
                 self.info['visible'].append(self.state.value)
@@ -84,8 +84,8 @@ class VideoPlayer():
         res_frame = self.frame.copy()
         res_frame = cv.putText(res_frame, self.state.name, (100, 100),
                            cv.FONT_HERSHEY_SIMPLEX, 2, self.colors[self.state.value], 2, cv.LINE_AA)
-        if self.frame_num in self.info['num']:
-            num = self.info['num'].index(self.frame_num)
+        if self.frame_num in self.info['frame_num']:
+            num = self.info['frame_num'].index(self.frame_num)
             x = int(self.info['x'][num] * self.width)
             y = int(self.info['y'][num] * self.height)
             visible = self.info['visible'][num]
@@ -107,17 +107,17 @@ class VideoPlayer():
             self.frame_num += 4
             self.clicked = True
         if key in keybindings['remove']:
-            if self.frame_num in self.info['num']:
-                row_num = self.info['num'].index(self.frame_num)
+            if self.frame_num in self.info['frame_num']:
+                row_num = self.info['frame_num'].index(self.frame_num)
                 self.info['x'].pop(row_num)
                 self.info['y'].pop(row_num)
-                self.info['num'].pop(row_num)
+                self.info['frame_num'].pop(row_num)
                 self.info['visible'].pop(row_num)
         if key in keybindings['next_selection']:
-            info_df = pd.DataFrame.from_dict(self.info).sort_values(by=['num'], ignore_index=True)
-            tmp = info_df[info_df['num'] > self.frame_num]
+            info_df = pd.DataFrame.from_dict(self.info).sort_values(by=['frame_num'], ignore_index=True)
+            tmp = info_df[info_df['frame_num'] > self.frame_num]
             if not tmp.empty:
-                new_frame_num = tmp.iloc[0]['num']
+                new_frame_num = tmp.iloc[0]['frame_num']
                 self.cap.set(cv.CAP_PROP_POS_FRAMES, new_frame_num)
                 self.frame_num = new_frame_num - 1
                 self.clicked = True
@@ -155,7 +155,7 @@ class VideoPlayer():
     def finish(self):
         self.cap.release()
         cv.destroyAllWindows()
-        df = pd.DataFrame.from_dict(self.info).sort_values(by=['num'], ignore_index=True)
+        df = pd.DataFrame.from_dict(self.info).sort_values(by=['frame_num'], ignore_index=True)
         df.to_csv(self.csv_path, index=False)
 
 
@@ -206,7 +206,7 @@ def remove_duplicate_frames(video_path, output_path):
 if __name__ == '__main__':
     opt = parse_opt()
 
-    # run as an .exe file
+    # run as an executable
     if opt.video_path is None:
         if getattr(sys, 'frozen', False):
             application_path = os.path.dirname(sys.executable)

@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
 import pandas as pd
 import numpy as np
+import abc
 import sys
 
 # if "ipykernel" in sys.modules:  # executed in a jupyter notebook
@@ -16,9 +17,6 @@ from pathlib import Path
 import cv2 as cv
 
 
-#TODO: think how to rewrite keeping of dataset parts so that it can be queried by dataframes
-# perhaps would be best to filter it during dataset creation
-#TODO: iterative, faster dataset
 class GenericDataset(Dataset):
     def __init__(self, opt):
         """Generic Dataset class, allows for dataset creation without specyfing the type of the dataset (images/videos).
@@ -46,20 +44,18 @@ class GenericDataset(Dataset):
             prev_nums = [-self.sequence_length] * (self.sequence_length - 1)
             df = pd.read_csv(csv_path)
             for _, row in df.iterrows():
-                if row['visible'] != 0:
-                    continue
                 # checking if the sequence is consecutive
                 for i, prev_num in enumerate(prev_nums, start=1):
-                    if prev_num != row["num"] - i:
+                    if prev_num != row["frame_num"] - i:
                         break
                 else:
                     self.sequence_starters[csv_path.stem].append(
-                        int(row["num"]) - (self.sequence_length - 1))
+                        int(row["frame_num"]) - (self.sequence_length - 1))
                     # reset prev_nums
                     if not opt.include_dups:
                         prev_num = [-self.sequence_length] * (self.sequence_length - 1)
                     continue
-                prev_nums = [row["num"]] + prev_nums[:-1]
+                prev_nums = [row["frame_num"]] + prev_nums[:-1]
         print()
 
     def __len__(self):
@@ -81,21 +77,21 @@ class GenericDataset(Dataset):
             break
 
         df = pd.read_csv((self.csvs_dir / img_name).with_suffix(".csv"))
-        if 'width' not in df.columns:
-            df['width'] = 50
-        if 'height' not in df.columns:
-            df['height'] = 50
+        if 'w' not in df.columns:
+            df['w'] = 50
+        if 'h' not in df.columns:
+            df['h'] = 50
         if self.one_output_frame:
-            df = df.loc[df['num'] == rel_idx + self.sequence_length // 2].iloc[0]
-            heatmaps = self.generate_heatmap_2(df["x"], df["y"], df["width"], df["height"])
+            df = df.loc[df['frame_num'] == rel_idx + self.sequence_length // 2].iloc[0]
+            heatmaps = self.generate_heatmap_2(df["x"], df["y"], df["w"], df["h"])
             # heatmaps = self.generate_heatmap(df["x"], df["y"], 100, 50)
 
             heatmaps = np.expand_dims(heatmaps, axis=0)
         else:
-            df = df.loc[df['num'].isin(range(rel_idx, rel_idx + self.sequence_length))]
+            df = df.loc[df['frame_num'].isin(range(rel_idx, rel_idx + self.sequence_length))]
             heatmaps = []
             for _, row in df.iterrows():
-                heatmaps.append(self.generate_heatmap_2(row["x"], row["y"], row["width"], row["height"]))
+                heatmaps.append(self.generate_heatmap_2(row["x"], row["y"], row["w"], row["h"]))
                 # heatmaps.append(self.generate_heatmap(row["x"], row["y"], 100, 50))
             heatmaps = np.stack(heatmaps, axis=0)
 
@@ -116,7 +112,6 @@ class GenericDataset(Dataset):
         """
         raise NotImplementedError
 
-    # TODO: utilize visibility info
     def generate_heatmap(self, center_x, center_y, variance, size):
         x = int(center_x * self.image_size[1])
         y = int(center_y * self.image_size[0])
@@ -261,7 +256,7 @@ class VideosDataset(GenericDataset):
         images_dir.mkdir(exist_ok=True)
         videos_list = list(self.videos_folder.glob("*.mp4"))
         for video_num, video_path in enumerate(videos_list):
-            (images_dir / video_path.name).mkdir(exist_ok=True)
+            (images_dir / video_path.stem).mkdir(exist_ok=True)
             cap = cv.VideoCapture(str(video_path))
             frame_num = 0
             print(f"--({video_num+1}/{len(videos_list)})-- splitting {video_path.name}")
@@ -329,7 +324,20 @@ if __name__ == "__main__":
     # plt.show()
     #
     # exit(0)
-    dataset = GenericDataset.from_dir("./dataset/")
+    class Arguments():
+        dataset = "./example_datasets/video_dataset/"
+        images_dir = "images"
+        videos_dir = "videos"
+        csvs_dir = "csvs"
+        sequence_length = 3
+        one_output_frame = False
+        grayscale = False
+        image_size = (1024, 512)
+        include_dups = True
+
+    opt = Arguments()
+
+    dataset = GenericDataset.from_dir(opt)
     # dataset = dataset.to_images_dataset()
     dl = DataLoader(dataset, batch_size=2, shuffle=True)
     for i, (x, y) in enumerate(dl):

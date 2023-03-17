@@ -10,7 +10,7 @@ def get_ball_position(img, original_img_=None):
     ret, thresh = cv.threshold(img, 0.9, 1, 0)
     thresh = cv.convertScaleAbs(thresh)
 
-    contours,hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+    contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     # numpy image
     if len(contours) != 0:
 
@@ -45,9 +45,9 @@ if __name__ == '__main__':
     opt.dropout = 0
     device = torch.device(opt.device)
     model = TrackNet(opt).to(device)
-    model.load(opt.weights, device = device)
+    model.load(opt.weights, device = opt.device)
     model.eval()
-    
+
     cap = cv.VideoCapture(opt.video)
     prev_frame_1 = None
     prev_frame_2 = None
@@ -60,11 +60,13 @@ if __name__ == '__main__':
         if prev_frame_1 is not None and prev_frame_2 is not None:
             frames = torch.cat([prev_frame_2, prev_frame_1, frame_torch], dim=0).unsqueeze(0)
             pred = model(frames)
-            pred = pred[0,0,:,:].detach().cpu().numpy()
-            frame_resized = cv.resize(frame, pred.shape[::-1], interpolation = cv.INTER_AREA)
-            get_ball_position(pred, original_img_=frame_resized)
-            cv.imshow('prediction', pred)
-            cv.imshow('original', frame_resized)
+            pred = pred[0,:,:,:].detach().cpu().numpy()
+            for i in range(pred.shape[0]):
+                pred_cut = pred[i,:,:]
+                frame_resized = cv.resize(frame, pred_cut.shape[::-1], interpolation = cv.INTER_AREA)
+                get_ball_position(pred_cut, original_img_=frame_resized)
+                cv.imshow('prediction', pred_cut)
+                cv.imshow('original', frame_resized)
         prev_frame_2 = prev_frame_1
         prev_frame_1 = frame_torch
 

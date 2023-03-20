@@ -136,3 +136,4 @@ tmp/
 .DS_STORE
 results/
 weights/
+wandb/

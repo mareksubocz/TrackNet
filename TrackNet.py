@@ -29,9 +29,9 @@ class TrackNet(nn.Module):
 
         # VGG16
         if opt.grayscale:
-            self.vgg_conv1 = self._make_convolution_layer(3, 64, 2, dropout_rate=opt.dropout)
+            self.vgg_conv1 = self._make_convolution_layer(opt.sequence_length, 64, 2, dropout_rate=opt.dropout)
         else:
-            self.vgg_conv1 = self._make_convolution_layer(9, 64, 2, dropout_rate=opt.dropout)
+            self.vgg_conv1 = self._make_convolution_layer(3*opt.sequence_length, 64, 2, dropout_rate=opt.dropout)
         self.vgg_maxpool1 = nn.MaxPool2d((2,2), stride=(2,2))
         self.vgg_conv2 = self._make_convolution_layer(64, 128, 2, dropout_rate=opt.dropout)
         self.vgg_maxpool2 = nn.MaxPool2d((2,2), stride=(2,2))
@@ -50,15 +50,15 @@ class TrackNet(nn.Module):
         if opt.one_output_frame:
             self.last_conv = nn.Conv2d(64, 1, kernel_size=(1,1), padding="same")
         else:
-            self.last_conv = nn.Conv2d(64, 3, kernel_size=(1,1), padding="same")
+            self.last_conv = nn.Conv2d(64, opt.sequence_length, kernel_size=(1,1), padding="same")
         self.last_sigmoid = nn.Sigmoid()
 
 
     def forward(self, x):
         # VGG16
-        x1 = self.vgg_conv1(x)     
+        x1 = self.vgg_conv1(x)
         x = self.vgg_maxpool1(x1)
-        x2 = self.vgg_conv2(x)     
+        x2 = self.vgg_conv2(x)
         x = self.vgg_maxpool2(x2)
         x3 = self.vgg_conv3(x)
         x = self.vgg_maxpool3(x3)

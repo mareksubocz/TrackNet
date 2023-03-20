@@ -2,6 +2,7 @@ import torch
 import torchvision
 from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
+import argparse
 import pandas as pd
 import numpy as np
 import abc
@@ -324,18 +325,16 @@ if __name__ == "__main__":
     # plt.show()
     #
     # exit(0)
-    class Arguments():
-        dataset = "./example_datasets/video_dataset/"
-        images_dir = "images"
-        videos_dir = "videos"
-        csvs_dir = "csvs"
-        sequence_length = 3
-        one_output_frame = False
-        grayscale = False
-        image_size = (1024, 512)
-        include_dups = True
-
-    opt = Arguments()
+    opt = argparse.Namespace()
+    opt.dataset = "./example_datasets/video_dataset/"
+    opt.images_dir = "images"
+    opt.videos_dir = "videos"
+    opt.csvs_dir = "csvs"
+    opt.sequence_length = 3
+    opt.one_output_frame = False
+    opt.grayscale = False
+    opt.image_size = (1024, 512)
+    opt.include_dups = True
 
     dataset = GenericDataset.from_dir(opt)
     # dataset = dataset.to_images_dataset()

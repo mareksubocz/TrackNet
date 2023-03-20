@@ -4,7 +4,6 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader, random_split
-from torch.utils.tensorboard.writer import SummaryWriter
 from torchvision.utils import save_image
 import torchvision
 
@@ -72,6 +71,7 @@ class AdaptiveWingLoss(torch.nn.Module):
 def parse_opt():
     parser = ArgumentParser()
     parser.add_argument('--weights', type=str, default=None, help='Path to initial weights the model should be loaded with. If not specified, the model will be initialized with random weights.')
+    parser.add_argument('--project_name', type=str, default='tracknet', help='Wandb project name')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to a checkpoint, chekpoint differs from weights due to including information about current loss, epoch and optimizer state.')
     parser.add_argument('--loss_function', type=str, default='my_loss', help='One of: {mse, euc, huber, wbce, l1, adwing, my_loss}')
     parser.add_argument('--batch_size', type=int, default=2, help='Batch size of the training dataset.')
@@ -88,7 +88,8 @@ def parse_opt():
     parser.add_argument('--dataset', type=str, default='dataset/', help='Path to dataset.')
     parser.add_argument('--device', type=str, default='cpu', help='Device to use (cpu, cuda, mps).')
     parser.add_argument('--type', type=str, default='auto', help='Type of dataset to create (auto, image, video). If auto, the dataset type will be inferred from the dataset directory, defaulting to image.')
-    parser.add_argument('--save_period', type=int, default=10, help='Save checkpoint every x epochs (disabled if <1).')
+    parser.add_argument('--checkpoint_period', type=int, default=1, help='Save checkpoint every x epochs (disabled if <1).')
+    parser.add_argument('--log_period', type=int, default=100, help='Log to tensorboard/wandb every x batches.')
     parser.add_argument('--checkpoint_save_path', type=str, default='weights/', help='Path to save checkpoints at.')
     parser.add_argument('--images_dir', type=str, default='images/', help="Path to dataset's images.")
     parser.add_argument('--videos_dir', type=str, default='videos/', help="Path to dataset's videos.")
@@ -99,7 +100,7 @@ def parse_opt():
     parser.add_argument('--tensorboard', action='store_true', help='Use tensorboard to log training progress.')
     parser.add_argument('--wandb', action='store_true', help='Use weights & biases to log training progress.')
     parser.add_argument('--one_output_frame', action='store_true', help='Demand only one output frame instead of three.')
-    parser.add_argument('--no_save_output_examples', action='store_true', help="Don't save output examples to results folder.")
+    parser.add_argument('--save_images', action='store_true', help="Save output examples to results folder.")
     parser.add_argument('--grayscale', action='store_true', help='Use grayscale images instead of RGB.')
     parser.add_argument('--single_batch_overfit', action='store_true', help='Overfit the model on a single batch.')
     opt = parser.parse_args()
@@ -107,7 +108,6 @@ def parse_opt():
 
 
 #TODO: add val accuracy
-#TODO: use tensorboard only if opt.tensorboard is true
 def training_loop(opt, device, model, writer, loss_function, optimizer, train_loader, val_loader):
     for epoch in range(opt.epochs):
         tqdm.write("Epoch: " + str(epoch))
@@ -127,52 +127,47 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
             running_loss += loss.item()
             pbar.set_description(f'Loss: {running_loss / (batch_idx+1):.6f}')
 
-            if batch_idx % opt.save_period == 0:
+            if batch_idx % opt.log_period == 0:
                 with torch.inference_mode():
+                    images = [
+                        torch.unsqueeze(y[0,0,:,:], 0).repeat(3,1,1).cpu(),
+                        torch.unsqueeze(y_pred[0,0,:,:], 0).repeat(3,1,1).cpu(),
+                    ]
+                    if opt.grayscale:
+                        images.append(X[0,:,:,:].cpu())
+                        res = X[0,:,:,:] * y[0,0,:,:]
+                    else:
+                        images.append(X[0,(2,1,0),:,:].cpu())
+                        res = X[0, (2,1,0),:,:] * y[0,0,:,:]
+                    images.append(res.cpu())
+                    grid = torchvision.utils.make_grid(images, nrow=1)#, padding=2)
                     if opt.wandb:
-                        wandb.log({'Loss/train/batch': running_loss / (batch_idx+1)})
+                        wandb_grid = wandb.Image(grid, caption="Image, predicted output and ball mask")
+                        wandb.log({
+                            'train':{
+                                'RunningLoss': running_loss / (batch_idx+1),
+                                "ImageResult": wandb_grid,
+                            }
+                        })
                     if opt.tensorboard:
-                        writer.add_scalar('Loss/train/batch', running_loss / (batch_idx+1), epoch * len(train_loader) + batch_idx)
-                    if not opt.no_save_output_examples:
-                        save_image(y[0,0,:,:], f'results/epoch_{epoch}_batch{batch_idx}_y.png')
-                        save_image(y_pred[0,0,:,:], f'results/epoch_{epoch}_batch{batch_idx}_y_pred.png')
-                        save_image(torch.abs((y[0,0,:,:] - y_pred[0,0,:,:])), f'results/epoch_{epoch}_batch{batch_idx}_y_diff.png')
-                        # writer.add_image('Train/y', torch.unsqueeze(y[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
-                        # writer.add_image('Train/y_pred', torch.unsqueeze(y_pred[0,0,:,:], 0), epoch * len(train_loader) + batch_idx)
-                        images = [
-                            torch.unsqueeze(y[0,0,:,:], 0).repeat(3,1,1).cpu(),
-                            torch.unsqueeze(y_pred[0,0,:,:], 0).repeat(3,1,1).cpu(),
-                        ]
-                        if opt.grayscale:
-                            # writer.add_image('Train/X', X[0,:,:,:], epoch * len(train_loader) + batch_idx)
-                            save_image(X[0,:,:,:], f'results/epoch_{epoch}_batch{batch_idx}_X.png')
-                            images.append(X[0,:,:,:].cpu())
-                            res = X[0,:,:,:] * y[0,0,:,:]
+                        writer.add_image('ImageResult', grid, epoch*len(train_loader) + batch_idx)
+                        writer.add_scalar('RunningLoss/train', running_loss / (batch_idx+1), epoch * len(train_loader) + batch_idx)
+                    if opt.save_images:
+                        save_image(grid, f'results/epoch_{epoch}_batch{batch_idx}.png')
 
-                        else:
-                            # writer.add_image('Train/X', X[0,(2,1,0),:,:], epoch * len(train_loader) + batch_idx)
-                            save_image(X[0,(2,1,0),:,:], f'results/epoch_{epoch}_batch{batch_idx}_X.png')
-                            images.append(X[0,(2,1,0),:,:].cpu())
-                            res = X[0, (2,1,0),:,:] * y[0,0,:,:]
-                        images.append(res.cpu())
-                        save_image(res, f'results/epoch_{epoch}_batch{batch_idx}_mask.png' )
-                        grid = torchvision.utils.make_grid(images, nrow=1)#, padding=2)
-                        if opt.wandb:
-                            wandb.log({'Loss/train/batch': running_loss / (batch_idx+1)})
-                            wandb_grid = wandb.Image(grid, caption="Image, predicted output and ball mask")
-                            wandb.log({"ImageResult": wandb_grid})
-                        writer.add_image('Train', grid, epoch*len(train_loader) + batch_idx)
 
         if val_loader is not None:
             val_loss = validation_loop(device, model, loss_function, val_loader)
             if opt.tensorboard:
                 writer.add_scalars('Loss', {'train': running_loss / len(train_loader), 'val': val_loss}, epoch)
             if opt.wandb:
-                wandb.log({'Loss/train': running_loss / len(train_loader),
-                           'Loss/val': val_loss})
+                wandb.log({
+                    'train/Loss': running_loss / len(train_loader),
+                    'val/Loss': val_loss,
+                })
 
             # save the model
-            if epoch % opt.save_period == opt.save_period - 1:
+            if epoch % opt.checkpoint_period == opt.checkpoint_period - 1:
                 save_path = ((Path(opt.checkpoint_save_path) / str(datetime.now())) / f"_epoch:{epoch}").with_suffix('.pth')
                 save_path.parent.mkdir(parents=True, exist_ok=True)
                 if opt.save_weights_only:
@@ -206,15 +201,7 @@ if __name__ == '__main__':
     opt = parse_opt()
     device = torch.device(opt.device)
     model = TrackNet(opt).to(device)
-    if opt.wandb:
-        import wandb
-        wandb.init(
-            project="tracknet-beaver",
-            config=vars(opt)
-        )
 
-    #FIXME: declare SummaryWriter only if opt.tensorboard is true
-    writer = SummaryWriter()
     loss_functions = {
         'mse': torch.nn.MSELoss(),
         'euc': euclidean_loss,
@@ -251,8 +238,19 @@ if __name__ == '__main__':
 
     images, heatmaps = next(iter(train_loader))
     print('Loss using zeros: ', loss_function(torch.zeros_like(heatmaps), heatmaps), '\n')
+
+    # initialize logging
+    writer = None
     if opt.tensorboard:
+        from torch.utils.tensorboard.writer import SummaryWriter
+        writer = SummaryWriter()
         writer.add_graph(model, images.to(device))
+    if opt.wandb:
+        import wandb
+        wandb.init(
+            project=opt.project_name,
+            config=vars(opt)
+        )
 
     if opt.single_batch_overfit:
         print('Overfitting on a single batch.')

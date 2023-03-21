@@ -7,7 +7,7 @@ import cv2 as cv
 
 
 def get_ball_position(img, original_img_=None):
-    ret, thresh = cv.threshold(img, 0.9, 1, 0)
+    ret, thresh = cv.threshold(img, 0.3, 1, 0)
     thresh = cv.convertScaleAbs(thresh)
 
     contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)

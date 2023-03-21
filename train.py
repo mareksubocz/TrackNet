@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, random_split
 from torchvision.utils import save_image
 import torchvision
+import json
 
 import dataset
 from TrackNet import TrackNet
@@ -90,7 +91,7 @@ def parse_opt():
     parser.add_argument('--type', type=str, default='auto', help='Type of dataset to create (auto, image, video). If auto, the dataset type will be inferred from the dataset directory, defaulting to image.')
     parser.add_argument('--checkpoint_period', type=int, default=1, help='Save checkpoint every x epochs (disabled if <1).')
     parser.add_argument('--log_period', type=int, default=100, help='Log to tensorboard/wandb every x batches.')
-    parser.add_argument('--checkpoint_save_path', type=str, default='weights/', help='Path to save checkpoints at.')
+    parser.add_argument('--save_path', type=str, default='weights/', help='Path to save checkpoints at.')
     parser.add_argument('--images_dir', type=str, default='images/', help="Path to dataset's images.")
     parser.add_argument('--videos_dir', type=str, default='videos/', help="Path to dataset's videos.")
     parser.add_argument('--csvs_dir', type=str, default='csvs/', help="Path to dataset's csv files.")
@@ -108,7 +109,8 @@ def parse_opt():
 
 
 #TODO: add val accuracy
-def training_loop(opt, device, model, writer, loss_function, optimizer, train_loader, val_loader):
+def training_loop(opt, device, model, writer, loss_function, optimizer, train_loader, val_loader, save_path):
+    best_val_loss = float('inf')
     for epoch in range(opt.epochs):
         tqdm.write("Epoch: " + str(epoch))
         running_loss = 0.0
@@ -157,23 +159,20 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
 
 
         if val_loader is not None:
+            best = False
             val_loss = validation_loop(device, model, loss_function, val_loader)
-            if opt.tensorboard:
-                writer.add_scalars('Loss', {'train': running_loss / len(train_loader), 'val': val_loss}, epoch)
-            if opt.wandb:
-                wandb.log({
-                    'train/Loss': running_loss / len(train_loader),
-                    'val/Loss': val_loss,
-                })
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best = True
 
             # save the model
             if epoch % opt.checkpoint_period == opt.checkpoint_period - 1:
-                save_path = ((Path(opt.checkpoint_save_path) / str(datetime.now())) / f"_epoch:{epoch}").with_suffix('.pth')
-                save_path.parent.mkdir(parents=True, exist_ok=True)
+                save_path.mkdir(parents=True, exist_ok=True)
                 if opt.save_weights_only:
                     tqdm.write('\n--- Saving weights to: ' + str(save_path))
-                    save_path = Path(save_path.name+"_weights_only").with_suffix('.pth')
-                    torch.save(model.state_dict(), save_path)
+                    torch.save(model.state_dict(), save_path.with_name('last.pth'))
+                    if best:
+                        torch.save(model.state_dict(), save_path.with_name('best.pth'))
                 else:
                     tqdm.write('\n--- Saving checkpoint to: ' + str(save_path))
                     torch.save({
@@ -181,7 +180,24 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
                         'loss': val_loss,
-                        }, save_path)
+                        }, save_path.with_name('last.pt'))
+                    if best:
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'loss': val_loss,
+                            }, save_path.with_name('best.pt'))
+
+            if opt.tensorboard:
+                writer.add_scalars('Loss', {'train': running_loss / len(train_loader), 'val': val_loss}, epoch)
+            if opt.wandb:
+                wandb.log({
+                    'train/Loss': running_loss / len(train_loader),
+                    'val/Loss': val_loss,
+                })
+                wandb.save(save_path/'*.pth')
+                wandb.save(save_path/'*.pt')
 
 
 def validation_loop(device, model, loss_function, val_loader):
@@ -252,12 +268,16 @@ if __name__ == '__main__':
             config=vars(opt)
         )
 
+    save_path = Path(opt.save_path) / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    with open(save_path / "config.json", "w") as file:
+        json.dump(vars(opt), file)
+
     if opt.single_batch_overfit:
         print('Overfitting on a single batch.')
-        training_loop(opt, device, model, writer, loss_function, optimizer, [(images, heatmaps)], None)
+        training_loop(opt, device, model, writer, loss_function, optimizer, [(images, heatmaps)], None, save_path)
 
     else:
         print("Starting training")
-        training_loop(opt, device, model, writer, loss_function, optimizer, train_loader, val_loader)
+        training_loop(opt, device, model, writer, loss_function, optimizer, train_loader, val_loader, save_path)
 
     wandb.finish()

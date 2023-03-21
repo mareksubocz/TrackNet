@@ -195,8 +195,8 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                     'train/Loss': running_loss / len(train_loader),
                     'val/Loss': val_loss,
                 })
-                wandb.save(save_path/'*.pth')
-                wandb.save(save_path/'*.pt')
+                wandb.save(str(save_path/'*.pth'))
+                wandb.save(str(save_path/'*.pt'))
 
 
 def validation_loop(device, model, loss_function, val_loader):

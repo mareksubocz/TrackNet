@@ -169,9 +169,9 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
             if epoch % opt.checkpoint_period == opt.checkpoint_period - 1:
                 if opt.save_weights_only:
                     tqdm.write('\n--- Saving weights to: ' + str(save_path))
-                    torch.save(model.state_dict(), save_path.with_name('last.pth'))
+                    torch.save(model.state_dict(), save_path / 'last.pth')
                     if best:
-                        torch.save(model.state_dict(), save_path.with_name('best.pth'))
+                        torch.save(model.state_dict(), save_path / 'best.pth')
                 else:
                     tqdm.write('\n--- Saving checkpoint to: ' + str(save_path))
                     torch.save({
@@ -179,14 +179,14 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
                         'loss': val_loss,
-                        }, save_path.with_name('last.pt'))
+                        }, save_path / 'last.pt')
                     if best:
                         torch.save({
                             'epoch': epoch,
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
                             'loss': val_loss,
-                            }, save_path.with_name('best.pt'))
+                            }, save_path / 'best.pt')
 
             if opt.tensorboard:
                 writer.add_scalars('Loss', {'train': running_loss / len(train_loader), 'val': val_loss}, epoch)
@@ -195,8 +195,10 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                     'train/Loss': running_loss / len(train_loader),
                     'val/Loss': val_loss,
                 })
-                wandb.save(str(save_path/'*.pth'))
-                wandb.save(str(save_path/'*.pt'))
+                wandb.save(str(save_path/'best.pth'))
+                wandb.save(str(save_path/'last.pth'))
+                wandb.save(str(save_path/'last.pt'))
+                wandb.save(str(save_path/'last.pt'))
 
 
 def validation_loop(device, model, loss_function, val_loader):

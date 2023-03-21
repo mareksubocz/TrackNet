@@ -167,7 +167,6 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
 
             # save the model
             if epoch % opt.checkpoint_period == opt.checkpoint_period - 1:
-                save_path.mkdir(parents=True, exist_ok=True)
                 if opt.save_weights_only:
                     tqdm.write('\n--- Saving weights to: ' + str(save_path))
                     torch.save(model.state_dict(), save_path.with_name('last.pth'))
@@ -269,6 +268,7 @@ if __name__ == '__main__':
         )
 
     save_path = Path(opt.save_path) / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_path.mkdir(parents=True, exist_ok=True)
     with open(save_path / "config.json", "w") as file:
         json.dump(vars(opt), file)
 

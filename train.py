@@ -197,7 +197,7 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                 })
                 wandb.save(str(save_path/'best.pth'))
                 wandb.save(str(save_path/'last.pth'))
-                wandb.save(str(save_path/'last.pt'))
+                wandb.save(str(save_path/'best.pt'))
                 wandb.save(str(save_path/'last.pt'))
 
 

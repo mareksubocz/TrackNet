@@ -149,8 +149,9 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                             'train':{
                                 'RunningLoss': running_loss / (batch_idx+1),
                                 "ImageResult": wandb_grid,
-                            }
-                        })
+                            } },
+                            step = epoch * len(train_loader) + batch_idx
+                        )
                     if opt.tensorboard:
                         writer.add_image('ImageResult', grid, epoch*len(train_loader) + batch_idx)
                         writer.add_scalar('RunningLoss/train', running_loss / (batch_idx+1), epoch * len(train_loader) + batch_idx)
@@ -194,7 +195,9 @@ def training_loop(opt, device, model, writer, loss_function, optimizer, train_lo
                 wandb.log({
                     'train/Loss': running_loss / len(train_loader),
                     'val/Loss': val_loss,
-                })
+                },
+                    step = epoch
+                )
                 wandb.save(str(save_path/'best.pth'))
                 wandb.save(str(save_path/'last.pth'))
                 wandb.save(str(save_path/'best.pt'))
@@ -268,6 +271,7 @@ if __name__ == '__main__':
             project=opt.project_name,
             config=vars(opt)
         )
+        wandb.watch(model, criterion=loss_function, log='all', log_freq=opt.log_period)
 
     save_path = Path(opt.save_path) / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_path.mkdir(parents=True, exist_ok=True)

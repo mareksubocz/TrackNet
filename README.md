@@ -1,6 +1,12 @@
 # TrackNet
 Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2).
 
+<br>
+<sup>Supported logging options:</sup>
+
+<a href="https://wandb.ai"><img align=center src="img/wandb_logo.png" width="150" height="auto" /></a> 
+<a href="https://www.tensorflow.org/tensorboard"><img align=center src="img/tensorboard-logo.png" width="150" height="auto" /> </a>
+
 ## Installation
 ```
 git clone https://github.com/mareksubocz/TrackNet

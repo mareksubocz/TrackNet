@@ -4,7 +4,7 @@ Pytorch implementation based on [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open
 <br>
 <sup>Supported logging options:</sup>
 
-<a href="https://wandb.ai"><img align=center src="img/wandb_logo.png" width="150" height="auto" /></a> 
+<a href="https://wandb.ai"><img align=center src="img/wandb_logo.png" width="150" height="auto" /></a>
 <a href="https://www.tensorflow.org/tensorboard"><img align=center src="img/tensorboard-logo.png" width="150" height="auto" /> </a>
 
 ## Installation
@@ -44,7 +44,7 @@ python labellingTool.py video.mp4
 ```
 
 <p align="center">
-  <img src="labelling_tool_demo.gif" alt="animated" />
+  <img src="img/labelling_tool_demo.gif" alt="animated" />
 </p>
 <p align="center">
   <em>Labelling tool in use. Fast-forward function is distorted due to gif compression.</em>

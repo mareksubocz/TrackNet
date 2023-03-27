@@ -1,17 +1,16 @@
 from argparse import ArgumentParser
 from TrackNet import TrackNet
-import numpy as np
 import torchvision
 import torch
 import cv2 as cv
 
 
-def get_ball_position(img, original_img_=None):
-    ret, thresh = cv.threshold(img, 0.3, 1, 0)
+def get_ball_position(img, opt, original_img_=None):
+    ret, thresh = cv.threshold(img, opt.brightness_thresh, 1, 0)
     thresh = cv.convertScaleAbs(thresh)
 
     contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
-    # numpy image
+
     if len(contours) != 0:
 
         #find the biggest area of the contour
@@ -20,7 +19,6 @@ def get_ball_position(img, original_img_=None):
         if original_img_ is not None:
             # the contours are drawn here
             cv.drawContours(original_img_, [c], -1, 255, 3)
-            cv.drawContours(img, [c], -1, 255, 3)
 
         x,y,w,h = cv.boundingRect(c)
         return x, y, w, h
@@ -37,6 +35,8 @@ def parse_opt():
     parser.add_argument('--one_output_frame', action='store_true', help='Demand only one output frame instead of three.')
     parser.add_argument('--grayscale', action='store_true', help='Use grayscale images instead of RGB.')
     parser.add_argument('--visualize', action='store_true', help='Display the predictions in real time.')
+    parser.add_argument('--waitBetweenFrames', type=int, default=100, help='Wait time in milliseconds between showing frames predicted in one forward pass.')
+    parser.add_argument('--brightness_thresh', type=int, default=0.7, help='Result heatmap pixel brightness threshold')
     opt = parser.parse_args()
     return opt
 
@@ -49,26 +49,40 @@ if __name__ == '__main__':
     model.eval()
 
     cap = cv.VideoCapture(opt.video)
-    prev_frame_1 = None
-    prev_frame_2 = None
+    videoEndReached = False
+
     while cap.isOpened():
-        ret,frame = cap.read()
-        frame_torch = torch.tensor(frame).permute(2, 0, 1).float().to(device) / 255
-        frame_torch = torchvision.transforms.functional.resize(frame_torch, opt.image_size)
+        #TODO: add one_output_frame support
 
+        frames = []
+        for _ in range(opt.sequence_length):
+            ret,frame = cap.read()
+            if not ret:
+                videoEndReached = True
+                break
+            frames.append(frame)
 
-        if prev_frame_1 is not None and prev_frame_2 is not None:
-            frames = torch.cat([prev_frame_2, prev_frame_1, frame_torch], dim=0).unsqueeze(0)
-            pred = model(frames)
-            pred = pred[0,:,:,:].detach().cpu().numpy()
-            for i in range(pred.shape[0]):
-                pred_cut = pred[i,:,:]
-                frame_resized = cv.resize(frame, pred_cut.shape[::-1], interpolation = cv.INTER_AREA)
-                get_ball_position(pred_cut, original_img_=frame_resized)
-                cv.imshow('prediction', pred_cut)
-                cv.imshow('original', frame_resized)
-        prev_frame_2 = prev_frame_1
-        prev_frame_1 = frame_torch
+        if videoEndReached:
+            break
+
+        frames_torch = []
+        for frame in frames:
+            frame_torch = torch.tensor(frame).permute(2, 0, 1).float().to(device) / 255
+            frame_torch = torchvision.transforms.functional.resize(frame_torch, opt.image_size)
+            frames_torch.append(frame_torch)
+
+        frames_torch = torch.cat(frames_torch, dim=0).unsqueeze(0)
+
+        pred = model(frames_torch)
+        pred = pred[0,:,:,:].detach().cpu().numpy()
+
+        for i in range(opt.sequence_length):
+            pred_frame = pred[i,:,:]
+            pred_frame = cv.resize(pred_frame, (frames[i].shape[1], frames[i].shape[0]), interpolation = cv.INTER_AREA)
+            get_ball_position(pred_frame, opt, original_img_=frames[i])
+            cv.imshow('prediction', pred_frame)
+            cv.imshow('original', frames[i])
+            cv.waitKey(opt.waitBetweenFrames)
 
         if cv.waitKey(10) & 0xFF == ord('q'):
             break

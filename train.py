@@ -255,9 +255,7 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=(not opt.no_shuffle))
     val_loader = DataLoader(test_dataset, batch_size=opt.val_batch_size)
 
-
     images, heatmaps = next(iter(train_loader))
-    print('Loss using zeros: ', loss_function(torch.zeros_like(heatmaps), heatmaps), '\n')
 
     # initialize logging
     writer = None
@@ -272,6 +270,8 @@ if __name__ == '__main__':
             config=vars(opt)
         )
         wandb.watch(model, criterion=loss_function, log='all', log_freq=opt.log_period)
+
+    print('Loss using zeros: ', loss_function(torch.zeros_like(heatmaps), heatmaps), '\n')
 
     save_path = Path(opt.save_path) / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_path.mkdir(parents=True, exist_ok=True)
